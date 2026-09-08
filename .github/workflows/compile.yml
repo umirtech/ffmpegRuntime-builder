@@ -1,0 +1,189 @@
+name: Build FFShell FFmpeg runtime for Android
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      build_type:
+        description: "Select Build Type"
+        required: true
+        default: "Minimal"
+        type: string
+
+jobs:
+  build-android:
+    name: libffmpeg.so (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - abi: arm64-v8a
+            arch: armv8a
+          - abi: armeabi-v7a
+            arch: armv7a
+          - abi: x86
+            arch: x86
+          - abi: x86_64
+            arch: x86-64
+
+    env:
+      NDK_VERSION: r28c
+      FFSHELL_ARCH_OVERRIDE: ${{ matrix.arch }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install build tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential meson ninja-build nasm pkg-config autoconf patch file
+
+    - name: Set up Android NDK
+      id: setup-ndk
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: ${{ env.NDK_VERSION }}
+        add-to-path: true
+
+    - name: Set environment variables
+      run: |
+        echo "ANDROID_NDK_PATH=${ANDROID_NDK_HOME}" >> $GITHUB_ENV
+        echo "FFMPEG_SOURCE_DIR=${GITHUB_WORKSPACE}/ffmpeg" >> $GITHUB_ENV
+        echo "FFMPEG_BUILD_DIR=${GITHUB_WORKSPACE}/ffmpeg-build" >> $GITHUB_ENV
+
+    - name: Build umbrella libffmpeg.so
+      run: |
+        BUILD_ARGS=""
+
+        if [ "${{ inputs.build_type }}" = "Full" ]; then
+        BUILD_ARGS="--full"
+        fi
+        
+        set -e
+        chmod +x android.sh
+        ./android.sh --arch "${FFSHELL_ARCH_OVERRIDE}" ${BUILD_ARGS}
+
+    - name: Validate ELF (16 KB pages, exports, DT_NEEDED)
+      run: |
+        set -euo pipefail
+        # CI sets FFMPEG_BUILD_DIR via env, but android.sh defaults to $SCRIPT_DIR/ffmpeg-build.
+        # Try the canonical path first, then the legacy 25-prefixed fallback.
+        LIB_CANDIDATES=(
+          "ffmpeg-build/${{ matrix.abi }}/lib/libffmpeg.so"
+          "ffmpeg-build/25/${{ matrix.abi }}/lib/libffmpeg.so"
+        )
+        LIB=""
+        for c in "${LIB_CANDIDATES[@]}"; do
+          if [ -f "$c" ]; then LIB="$c"; break; fi
+        done
+        if [ -z "$LIB" ]; then
+          echo "FAIL: libffmpeg.so not found. Tried: ${LIB_CANDIDATES[*]}"
+          ls -R ffmpeg-build 2>&1 | head -n 100 || true
+          find . -name libffmpeg.so 2>/dev/null | head -20
+          exit 1
+        fi
+        echo "=== Validating ${{ matrix.abi }}: $LIB ==="
+        file "$LIB" || true
+        # Resolve NDK tools: prefer ANDROID_NDK_PATH/HOME, then PATH, then find under SDK
+        resolve_tool() {
+          local name="$1" cand=""
+          for base in "${ANDROID_NDK_PATH:-}" "${ANDROID_NDK_HOME:-}"; do
+            cand="$base/toolchains/llvm/prebuilt/linux-x86_64/bin/$name"
+            [ -x "$cand" ] && { echo "$cand"; return 0; }
+            cand="$base/toolchains/llvm/prebuilt/linux-aarch64/bin/$name"
+            [ -x "$cand" ] && { echo "$cand"; return 0; }
+          done
+          if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+          # Last resort: search under common SDK roots
+          for r in /opt/android-sdk /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+            cand=$(find "$r" -name "$name" -path "*/llvm/prebuilt/*/bin/$name" 2>/dev/null | head -1)
+            [ -n "$cand" ] && [ -x "$cand" ] && { echo "$cand"; return 0; }
+          done
+          echo "$name"
+        }
+        READELF="$(resolve_tool llvm-readelf)"
+        NM="$(resolve_tool llvm-nm)"
+        echo "READELF=$READELF"
+        echo "NM=$NM"
+        ls -l "$READELF" "$NM" 2>&1 || true
+        "$READELF" --version 2>&1 | head -1 || true
+        "$NM" --version 2>&1 | head -1 || true
+        "$READELF" -h "$LIB" | tee /tmp/readelf-h.txt
+        grep -q "Type:.*DYN" /tmp/readelf-h.txt || { echo "FAIL: ELF type is not DYN"; cat /tmp/readelf-h.txt; exit 1; }
+        "$READELF" -lW "$LIB" | tee /tmp/readelf-l.txt
+        if awk '/^  LOAD/ {print $NF}' /tmp/readelf-l.txt | grep -qv "0x4000"; then
+          echo "FAIL: ${{ matrix.abi }} not 16KB aligned (expected 0x4000)"
+          cat /tmp/readelf-l.txt
+          exit 1
+        fi
+        echo "16KB OK ${{ matrix.abi }}"
+        "$READELF" -d "$LIB" | tee /tmp/readelf-d.txt
+        grep -q "SONAME.*\[libffmpeg.so\]" /tmp/readelf-d.txt || { echo "FAIL: SONAME is not libffmpeg.so"; cat /tmp/readelf-d.txt; exit 1; }
+        if grep -E "NEEDED.*\[libav(codec|format|util|filter)|libsw(scale|resample)|libdav1d|libx264|libx265|libvpx|libopus|libmp3lame|libaom|libass|libfdk-aac" /tmp/readelf-d.txt; then
+          echo "FAIL: forbidden DT_NEEDED in $LIB"
+          exit 1
+        fi
+        echo "=== Dynamic symbols (NM -D) ==="
+        "$NM" -D --defined-only "$LIB" | tee /tmp/nm.txt || {
+          echo "FAIL: llvm-nm failed for $LIB (exit $?)"
+          echo "Trying readelf --dyn-syms fallback:"
+          "$READELF" --dyn-syms "$LIB" 2>&1 | head -100 || true
+          exit 1
+        }
+        echo "NM produced $(wc -l < /tmp/nm.txt) dynamic symbols"
+        grep -E "T ffshell_ffmpeg_run|T ffshell_ffprobe_run" /tmp/nm.txt || true
+        for sym in ffshell_ffmpeg_run ffshell_ffprobe_run; do
+          if ! grep -q "$sym" /tmp/nm.txt; then
+            echo "FAIL: required symbol '$sym' not found in $LIB"
+            echo "--- NM output (head) ---"
+            head -100 /tmp/nm.txt || true
+            echo "--- readelf --dyn-syms fallback ---"
+            "$READELF" --dyn-syms "$LIB" 2>&1 | grep -i ffshell | head -20 || true
+            exit 1
+          fi
+          echo "found $sym"
+        done
+        echo "Validate OK ${{ matrix.abi }}"
+
+    - name: Install FFShell headers
+      run: |
+        set -e
+        mkdir -p "ffmpeg-build/${{ matrix.abi }}/include/ffshell"
+        cp ffshell/include/ffshell/ffshell_ffmpeg.h "ffmpeg-build/${{ matrix.abi }}/include/ffshell/"
+        if [ -d "ffmpeg-build/25/${{ matrix.abi }}/include" ]; then
+          mkdir -p "ffmpeg-build/${{ matrix.abi }}/include"
+          cp -r "ffmpeg-build/25/${{ matrix.abi }}/include"/* "ffmpeg-build/${{ matrix.abi }}/include/" 2>/dev/null || true
+        fi
+        ls -lh "ffmpeg-build/${{ matrix.abi }}/include/ffshell/"
+
+    - name: Stage artifact (<abi>/lib/ + <abi>/include)
+      run: |
+        set -e
+        rm -rf out
+        mkdir -p "out/${{ matrix.abi }}/lib" "out/${{ matrix.abi }}/include"
+        # Handle both canonical and 25-prefixed build layouts
+        if [ -f "ffmpeg-build/${{ matrix.abi }}/lib/libffmpeg.so" ]; then
+          cp "ffmpeg-build/${{ matrix.abi }}/lib/libffmpeg.so" "out/${{ matrix.abi }}/lib/libffmpeg.so"
+        elif [ -f "ffmpeg-build/25/${{ matrix.abi }}/lib/libffmpeg.so" ]; then
+          cp "ffmpeg-build/25/${{ matrix.abi }}/lib/libffmpeg.so" "out/${{ matrix.abi }}/lib/libffmpeg.so"
+        else
+          echo "FAIL: libffmpeg.so not found for ${{ matrix.abi }}"
+          find ffmpeg-build -name libffmpeg.so 2>/dev/null | head -20 || true
+          ls -R ffmpeg-build 2>&1 | head -100 || true
+          exit 1
+        fi
+        cp -r "ffmpeg-build/${{ matrix.abi }}/include"/* "out/${{ matrix.abi }}/include/" 2>/dev/null || true
+        echo "=== Staged out/${{ matrix.abi }}/ ==="
+        ls -R out | head -n 100
+        test -f "out/${{ matrix.abi }}/lib/libffmpeg.so" || { echo "missing out/${{ matrix.abi }}/lib/libffmpeg.so"; exit 1; }
+        test -f "out/${{ matrix.abi }}/include/ffshell/ffshell_ffmpeg.h" || { echo "missing header"; exit 1; }
+        ls "out/${{ matrix.abi }}/include"/*/*.h >/dev/null 2>&1 || { echo "missing out/${{ matrix.abi }}/include/*/*.h"; ls -R "out/${{ matrix.abi }}/include" | head -n 50; exit 1; }
+        echo "OK ${{ matrix.abi }}: out/${{ matrix.abi }}/lib/libffmpeg.so + out/${{ matrix.abi }}/include/*/*.h"
+
+    - name: Upload FFShell runtime artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffshell-libffmpeg-${{ matrix.abi }}
+        path: out/${{ matrix.abi }}

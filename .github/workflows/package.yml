@@ -1,0 +1,60 @@
+name: Build FFShell Distributable Package (Installer Compatible)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Select Build Type"
+        required: true
+        default: "Minimal"
+        type: choice
+        options:
+          - Full
+          - Minimal
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build via compile workflow (reuse)
+    uses: ./.github/workflows/compile.yml
+    with:
+      build_type: ${{ inputs.build_type }}
+
+  package:
+    name: package (manifest + zip)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout packaging script
+      uses: actions/checkout@v4
+
+    - name: Download per-ABI builds from compile workflow
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ffshell-libffmpeg-*
+        path: ./combined
+
+    - name: Build distributable package via shared package.sh
+      run: |
+        chmod +x package.sh
+        ./package.sh
+
+    - name: Upload package artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffshell-ffmpeg-package-${{ env.PKG_VERSION }}
+        path: |
+          build/package/*.zip
+        retention-days: 30
+
+    - name: Create GitHub Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          build/package/*.zip
+        generate_release_notes: true
