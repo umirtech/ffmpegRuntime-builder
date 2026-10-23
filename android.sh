@@ -13,14 +13,14 @@ ENABLED_CONFIG="\
 		--enable-avcodec \
 		--enable-avformat \
 		--enable-avutil \
-  		--enable-swscale \
+    --enable-swscale \
 		--enable-swresample \
 		--enable-libdav1d \
 		--enable-avfilter \
 		--enable-avdevice \
 		--enable-mediacodec \
 		--enable-jni \
-        	--enable-demuxer=* \
+    --enable-demuxer=* \
 		--enable-filter=* \
 		--enable-indev=lavfi \
 		--enable-muxer=wav,mp4,matroska,webm,mp3,adts,flac,ogg,opus,mpegts,hls,dash,segment,gif,image2,srt \
@@ -45,7 +45,7 @@ ENABLED_CONFIG="\
 		--enable-parser=* \
 		--enable-bsf=* \
  		--enable-protocol=file,pipe,appfd \
-    		--enable-ffmpeg \
+    --enable-ffmpeg \
 		--enable-ffprobe \
 		--enable-shared \
 		--enable-optimizations \
