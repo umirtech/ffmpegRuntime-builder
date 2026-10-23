@@ -20,7 +20,7 @@ ENABLED_CONFIG="\
 		--enable-avdevice \
 		--enable-mediacodec \
 		--enable-jni \
-        --enable-demuxer=* \
+        	--enable-demuxer=* \
 		--enable-filter=* \
 		--enable-indev=lavfi \
 		--enable-muxer=wav,mp4,matroska,webm,mp3,adts,flac,ogg,opus,mpegts,hls,dash,segment,gif,image2,srt \
@@ -44,8 +44,8 @@ ENABLED_CONFIG="\
 		--enable-decoder=h264_mediacodec,hevc_mediacodec,mpeg2_mediacodec,mpeg4_mediacodec,vp8_mediacodec,vp9_mediacodec,av1_mediacodec \
 		--enable-parser=* \
 		--enable-bsf=* \
- 	--enable-protocol=file,pipe,appfd \
-    	--enable-ffmpeg \
+ 		--enable-protocol=file,pipe,appfd \
+    		--enable-ffmpeg \
 		--enable-ffprobe \
 		--enable-shared \
 		--enable-optimizations \
