@@ -20,15 +20,16 @@ ENABLED_CONFIG="\
 		--enable-avdevice \
 		--enable-mediacodec \
 		--enable-jni \
-		--enable-muxer=wav,mp4,matroska,webm,mp3,adts,flac,ogg,opus,mpegts,hls,dash,segment,gif,image2,srt \
         --enable-demuxer=* \
+		--enable-filter=* \
 		--enable-indev=lavfi \
-		--enable-filter=testsrc,testsrc2,color,smptebars,smptehdbars,allrgb,allyuv,cellauto,mandelbrot,life,nullsrc,anullsrc,sine,aevalsrc,anoisesrc,mptestsrc,scale,format,null,anull,trim,setpts,asetpts,fps,aformat,aresample,crop,transpose,hflip,vflip,overlay,concat,volume,atempo,amix \
+		--enable-muxer=wav,mp4,matroska,webm,mp3,adts,flac,ogg,opus,mpegts,hls,dash,segment,gif,image2,srt \
 	 	--enable-encoder=mjpeg,utvideo \
 		--enable-encoder=aac,mpeg4 \
 		--enable-encoder=opus,vorbis,flac \
 		--enable-encoder=pcm_s16le,pcm_s24le \
-		--enable-encoder=gif \
+		--enable-encoder=png,gif \
+		--enable-encoder=h264_mediacodec,hevc_mediacodec \
 		--enable-encoder=srt,mov_text,webvtt,ass \
 		--enable-encoder=wrapped_avframe,rawvideo \
 		--enable-decoder=wrapped_avframe,rawvideo \
@@ -41,7 +42,6 @@ ENABLED_CONFIG="\
 		--enable-decoder=webp,mp3,aac,ac3,eac3,flac,opus,vorbis,pcm_s16le \
 		--enable-decoder=pcm_s24le,alac,wma,ass,ssa,mov_text,subrip,webvtt \
 		--enable-decoder=h264_mediacodec,hevc_mediacodec,mpeg2_mediacodec,mpeg4_mediacodec,vp8_mediacodec,vp9_mediacodec,av1_mediacodec \
-		--enable-encoder=h264_mediacodec,hevc_mediacodec \
 		--enable-parser=* \
 		--enable-bsf=* \
  	--enable-protocol=file,pipe,appfd \
