@@ -56,7 +56,6 @@ ENABLED_CONFIG="\
 ### Disable FFMPEG BUILD MODULES ####
 DISABLED_CONFIG="\
 		--disable-small \
-		--disable-zlib \
 		--disable-v4l2-m2m \
 		--disable-cuda-llvm \
 		--disable-libxml2 \
