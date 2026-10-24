@@ -13,18 +13,21 @@ ENABLED_CONFIG="\
 		--enable-avcodec \
 		--enable-avformat \
 		--enable-avutil \
-    --enable-swscale \
+		--enable-swscale \
 		--enable-swresample \
 		--enable-libdav1d \
 		--enable-avfilter \
 		--enable-avdevice \
-		--enable-mediacodec \
 		--enable-jni \
-    --enable-demuxer=* \
+		--enable-hwaccel=mediacodec \
+		--enable-mediacodec \
+		--enable-demuxer=* \
 		--enable-filter=* \
 		--enable-indev=lavfi \
-		--enable-muxer=wav,mp4,matroska,webm,mp3,adts,flac,ogg,opus,mpegts,hls,dash,segment,gif,image2,srt \
-	 	--enable-encoder=mjpeg,utvideo \
+		--enable-muxer=wav,mp4,matroska,webm \
+		--enable-muxer=mp3,adts,flac,ogg,opus,mpegts \
+		--enable-muxer=hls,dash,segment,gif,image2,srt \
+		--enable-encoder=mjpeg,utvideo \
 		--enable-encoder=aac,mpeg4 \
 		--enable-encoder=opus,vorbis,flac \
 		--enable-encoder=pcm_s16le,pcm_s24le \
@@ -35,23 +38,29 @@ ENABLED_CONFIG="\
 		--enable-decoder=wrapped_avframe,rawvideo \
 		--enable-decoder=pcm_s32le,pcm_f32le,pcm_u8 \
 		--enable-decoder=h264,hevc,vp8,vp9,libdav1d \
-		--enable-decoder=flv,vp6f,gif,dvbsub,dvdsub,pgssub,utvideo \
-		--enable-decoder=adpcm_swf,mpeg4,wmv3,mpeg1video,mpeg2video \
-		--enable-decoder=mpeg2audio,msmpeg4v2,msmpeg4v3,theora,truehd \
-		--enable-decoder=amrnb,amrwb,dvvideo,h263,mjpeg,png,jpeg,bmp \
-		--enable-decoder=webp,mp3,aac,ac3,eac3,flac,opus,vorbis,pcm_s16le \
-		--enable-decoder=pcm_s24le,alac,wma,ass,ssa,mov_text,subrip,webvtt \
-		--enable-decoder=h264_mediacodec,hevc_mediacodec,mpeg2_mediacodec,mpeg4_mediacodec,vp8_mediacodec,vp9_mediacodec,av1_mediacodec \
+		--enable-decoder=flv,vp6f,gif,utvideo \
+		--enable-decoder=dvbsub,dvdsub,pgssub \
+		--enable-decoder=adpcm_swf,mpeg4,wmv3 \
+		--enable-decoder=mpeg1video,mpeg2video,mpeg2audio \
+		--enable-decoder=msmpeg4v2,msmpeg4v3,theora,truehd \
+		--enable-decoder=amrnb,amrwb,dvvideo,h263 \
+		--enable-decoder=mjpeg,png,jpeg,bmp,webp \
+		--enable-decoder=mp3,aac,ac3,eac3,flac,opus,vorbis \
+		--enable-decoder=pcm_s16le,pcm_s24le,alac,wma \
+		--enable-decoder=ass,ssa,mov_text,subrip,webvtt \
+		--enable-decoder=h264_mediacodec,hevc_mediacodec \
+		--enable-decoder=mpeg2_mediacodec,mpeg4_mediacodec \
+		--enable-decoder=vp8_mediacodec,vp9_mediacodec \
+		--enable-decoder=av1_mediacodec \
 		--enable-parser=* \
 		--enable-bsf=* \
- 		--enable-protocol=file,pipe,appfd \
-    --enable-ffmpeg \
+		--enable-protocol=file,pipe,appfd \
+		--enable-ffmpeg \
 		--enable-ffprobe \
 		--enable-shared \
 		--enable-optimizations \
 		--enable-lto \
 		--enable-pic "
-
 
 ### Disable FFMPEG BUILD MODULES ####
 DISABLED_CONFIG="\
