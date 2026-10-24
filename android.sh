@@ -19,7 +19,6 @@ ENABLED_CONFIG="\
 		--enable-avfilter \
 		--enable-avdevice \
 		--enable-jni \
-		--enable-hwaccel=h264_mediacodec,hevc_mediacodec \
 		--enable-mediacodec \
 		--enable-demuxer=* \
 		--enable-filter=* \
