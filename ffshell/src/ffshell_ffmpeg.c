@@ -17,6 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <limits.h>
 #include <sys/socket.h>
 
@@ -446,6 +447,65 @@ char *ffshell_path_hook_request(int is_output, const char *raw_path)
 
     char *url = cb(is_output, raw_path, user);
     if (url) ffshell_track_rewritten(url);
+    return url;
+}
+
+/* ------------------------------------------------------------------ */
+/* Concat-entry path hook                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Called by the patched libavformat/concatdec.c immediately before each
+ * entry's avformat_open_input(). Unlike ffshell_path_hook_request():
+ *  - entries are known files, so the lavfi heuristic must not run;
+ *  - the returned string is owned by concatdec (freed after the open),
+ *    not retained in g_rewritten_urls;
+ *  - when the result is appfd:N, N is handed back so concatdec can close
+ *    the original detached descriptor after appfd_open() duplicated it.
+ *
+ * Returns NULL to keep the upstream-resolved URL. On success the caller
+ * must av_free() the returned string and close *fd_to_close when >= 0.
+ */
+__attribute__((visibility("hidden")))
+char *ffshell_concat_path_hook_request(const char *raw_path, int *fd_to_close)
+{
+    ffshell_path_callback cb;
+    void *user;
+    char *url;
+
+    if (fd_to_close)
+        *fd_to_close = -1;
+    if (!raw_path || !*raw_path)
+        return NULL;
+
+    /* URLs and pipes are passed through untouched, mirroring pathCallback. */
+    if (strstr(raw_path, "://"))
+        return NULL;
+    if (!strncmp(raw_path, "pipe:", 5))
+        return NULL;
+
+    pthread_mutex_lock(&g_lock);
+    cb   = g_path_cb;
+    user = g_path_user;
+    pthread_mutex_unlock(&g_lock);
+    if (!cb)
+        return NULL;
+
+    url = cb(0, raw_path, user);
+    if (!url)
+        return NULL;
+
+    if (fd_to_close && !strncmp(url, "appfd:", 6)) {
+        const char *p = url + 6;
+        char *end = NULL;
+        long fd;
+
+        errno = 0;
+        fd = strtol(p, &end, 10);
+        if (errno == 0 && end != p && *end == '\0' &&
+            fd >= 0 && fd <= INT_MAX)
+            *fd_to_close = (int)fd;
+    }
     return url;
 }
 

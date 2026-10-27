@@ -708,6 +708,9 @@ clean_and_fetch_sources(){
 	# re-injected here so a pristine upstream checkout always gets it
 	# before configure runs.
 	if ! inject_appfd_protocol; then return 1; fi
+	# Route marked concat-list entries through the runtime path hook so
+	# SAF/Picked inputs resolve like any other FFmpeg input.
+	if ! patch_concat_path_hook; then return 1; fi
 	# Guard upstream binder threadpool init: unpatched, every ffmpeg run
 	# SIGABRTs on API 35+ app processes ("cannot be shrunk after starting").
 	if ! patch_binder_threadpool_guard; then return 1; fi
@@ -755,6 +758,186 @@ inject_appfd_protocol(){
 		fi
 	fi
 	return 0
+}
+
+patch_concat_path_hook(){
+	# Marked lists ("# ffshell-list v1", written by the `listfiles` command)
+	# store workspace paths that must be resolved at open time, exactly like
+	# a normal FFmpeg input:
+	#   Internal      absolute paths (also work unpatched)
+	#   SAF           workspace-root-relative paths
+	#   PickedFiles   full virtual paths
+	# Upstream add_file() resolves entries with ff_make_absolute_url() against
+	# the *script* URL (an appfd:N FD for SAF lists), which cannot represent
+	# those paths. Keep the raw entry, and immediately before each
+	# avformat_open_input() ask the runtime path hook to resolve it.
+	# Unmarked lists are left byte-for-byte upstream (the agent merge list
+	# depends on that).
+	local TARGET="$FFMPEG_SOURCE_DIR/libavformat/concatdec.c"
+	if [ ! -f "$TARGET" ]; then
+		echo "concatdec.c not found; concat path hook not injected" >&2
+		return 1
+	fi
+	if grep -q "FFSHELL_CONCAT_PATH_HOOK" "$TARGET" 2>/dev/null; then
+		echo "concat path hook already present."
+		return 0
+	fi
+	python3 - "$TARGET" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+with open(path) as fh:
+    src = fh.read()
+
+if "FFSHELL_CONCAT_PATH_HOOK" in src:
+    print("concat path hook already present")
+    sys.exit(0)
+
+def patch(anchor, replacement, what):
+    global src
+    count = src.count(anchor)
+    if count != 1:
+        sys.stderr.write(
+            "concatdec hook: expected exactly one anchor for %s, found %d\n"
+            % (what, count))
+        sys.exit(1)
+    src = src.replace(anchor, replacement, 1)
+
+# 1. Hook declaration, marker, and close() for the detached appfd FD.
+patch(
+    '#include "url.h"\n',
+    '#include "url.h"\n'
+    '#include <unistd.h>\n'
+    '\n'
+    '/* ---- FFSHELL_CONCAT_PATH_HOOK (injected by android.sh) --------------- */\n'
+    '/* Resolve marked concat entries through the runtime path callback.      */\n'
+    '/* Returns a caller-owned URL (av_free) and, for appfd:N results, N in  */\n'
+    '/* *fd_to_close. appfd_open() duplicates N, so concatdec must close it   */\n'
+    '/* after avformat_open_input() returns.                                  */\n'
+    'extern char *ffshell_concat_path_hook_request(const char *raw_path, int *fd_to_close);\n'
+    '/* Must match ConcatListFormat.MARKER in the app (Kotlin). */\n'
+    '#define FFSHELL_LIST_MARKER     "# ffshell-list v1"\n'
+    '#define FFSHELL_LIST_MARKER_LEN (sizeof(FFSHELL_LIST_MARKER) - 1)\n'
+    '/* ---- end FFSHELL_CONCAT_PATH_HOOK declaration ----------------------- */\n',
+    "url.h include",
+)
+
+# 2. Per-file raw entry (pre-ff_make_absolute_url).
+patch(
+    '    char *url;\n'
+    '    int64_t start_time;\n',
+    '    char *url;\n'
+    '    char *ffshell_raw_url;\n'
+    '    int64_t start_time;\n',
+    "ConcatFile.url field",
+)
+
+# 3. Per-script marker flag.
+patch(
+    '    int safe;\n'
+    '    int seekable;\n',
+    '    int ffshell_list;\n'
+    '    int safe;\n'
+    '    int seekable;\n',
+    "ConcatContext.safe field",
+)
+
+# 4. Keep the escaped token before upstream rewrites it into an absolute URL.
+patch(
+    '    char *url = NULL;\n'
+    '    const char *proto;\n',
+    '    char *url = NULL;\n'
+    '    char *raw_url = NULL;\n'
+    '    const char *proto;\n',
+    "add_file url declaration",
+)
+patch(
+    '    if (cat->safe && !safe_filename(filename)) {\n'
+    '        av_log(avf, AV_LOG_ERROR, "Unsafe file name \'%s\'\\n", filename);\n'
+    '        FAIL(AVERROR(EPERM));\n'
+    '    }\n'
+    '\n'
+    '    proto = avio_find_protocol_name(filename);\n',
+    '    if (cat->safe && !safe_filename(filename)) {\n'
+    '        av_log(avf, AV_LOG_ERROR, "Unsafe file name \'%s\'\\n", filename);\n'
+    '        FAIL(AVERROR(EPERM));\n'
+    '    }\n'
+    '\n'
+    '    if (cat->ffshell_list && !(raw_url = av_strdup(filename)))\n'
+    '        FAIL(AVERROR(ENOMEM));\n'
+    '\n'
+    '    proto = avio_find_protocol_name(filename);\n',
+    "add_file safe check",
+)
+patch(
+    '    file->url        = url;\n',
+    '    file->url        = url;\n'
+    '    file->ffshell_raw_url = raw_url;\n',
+    "add_file file assignment",
+)
+patch(
+    'fail:\n'
+    '    av_free(url);\n'
+    '    av_free(filename);\n'
+    '    return ret;\n',
+    'fail:\n'
+    '    av_free(raw_url);\n'
+    '    av_free(url);\n'
+    '    av_free(filename);\n'
+    '    return ret;\n',
+    "add_file fail cleanup",
+)
+
+# 5. Detect the marker on the first line (before keyword parsing).
+patch(
+    '    while ((ret = ff_read_line_to_bprint_overwrite(avf->pb, &bp)) >= 0) {\n'
+    '        line++;\n'
+    '        cursor = bp.str;\n'
+    '        keyword = get_keyword(&cursor);\n',
+    '    while ((ret = ff_read_line_to_bprint_overwrite(avf->pb, &bp)) >= 0) {\n'
+    '        line++;\n'
+    '        cursor = bp.str;\n'
+    '        if (line == 1 &&\n'
+    '            !strncmp((const char *)cursor, FFSHELL_LIST_MARKER,\n'
+    '                     FFSHELL_LIST_MARKER_LEN))\n'
+    '            cat->ffshell_list = 1;\n'
+    '        keyword = get_keyword(&cursor);\n',
+    "concat_parse_script first line",
+)
+
+# 6. Open marked entries through the hook. appfd_open() duplicates the FD,
+#    so close the original one after the open.
+patch(
+    '    if ((ret = avformat_open_input(&cat->avf, file->url, NULL, &options)) < 0 ||\n'
+    '        (ret = avformat_find_stream_info(cat->avf, NULL)) < 0) {\n',
+    '    if (cat->ffshell_list && file->ffshell_raw_url) {\n'
+    '        int hook_fd = -1;\n'
+    '        char *hook_url = ffshell_concat_path_hook_request(file->ffshell_raw_url,\n'
+    '                                                           &hook_fd);\n'
+    '        ret = avformat_open_input(&cat->avf, hook_url ? hook_url : file->url,\n'
+    '                                  NULL, &options);\n'
+    '        if (hook_fd >= 0)\n'
+    '            close(hook_fd);\n'
+    '        av_freep(&hook_url);\n'
+    '    } else {\n'
+    '        ret = avformat_open_input(&cat->avf, file->url, NULL, &options);\n'
+    '    }\n'
+    '    if (ret < 0 || (ret = avformat_find_stream_info(cat->avf, NULL)) < 0) {\n',
+    "probe_file open_input",
+)
+
+# 7. Free the raw entry with the rest of the file state.
+patch(
+    '        av_freep(&cat->files[i].url);\n',
+    '        av_freep(&cat->files[i].url);\n'
+    '        av_freep(&cat->files[i].ffshell_raw_url);\n',
+    "concat_read_close url free",
+)
+
+with open(path, "w") as fh:
+    fh.write(src)
+print("concat path hook injected")
+PYEOF
 }
 
 patch_binder_threadpool_guard(){
