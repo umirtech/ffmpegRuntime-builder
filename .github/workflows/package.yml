@@ -31,7 +31,7 @@ jobs:
     name: Build via compile workflow (reuse)
     uses: ./.github/workflows/compile.yml
     with:
-      build_type: ${{ env.BUILD_TYPE }}
+      build_type: ${{ github.event_name == 'push' && 'Full' || inputs.build_type || 'Minimal' }}
 
   package:
     name: Package and release FFmpeg Runtime
