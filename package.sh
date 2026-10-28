@@ -6,7 +6,7 @@
 #   - .github/workflows/package.yml  (CI: pass version input as $1)
 #   - local usage: ./package.sh [version]
 #
-# Produces: build/package/ffshell-ffmpeg-<version>-android.zip
+# Produces: build/package/ffmpeg-runtime-<version>-<build_type>-android.zip
 #           build/package/manifest.json
 #
 set -euo pipefail
@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 VERSION_INPUT="${1:-}"
+BUILD_TYPE_INPUT="${2:-${BUILD_TYPE:-}}"
 STAGE_DIR="${STAGE_DIR:-/tmp/pkg-stage}"
 OUT_DIR="$SCRIPT_DIR/build/package"
 ABIS="arm64-v8a armeabi-v7a x86 x86_64"
@@ -184,6 +185,21 @@ for f in "$SCRIPT_DIR/ffmpeg/ffbuild/config.mak" "$SCRIPT_DIR/build-src/ffmpeg/f
 done
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Build type: explicit input/env wins; otherwise infer from FFmpeg configuration.
+if [ -n "$BUILD_TYPE_INPUT" ]; then
+	BUILD_TYPE=$(printf '%s' "$BUILD_TYPE_INPUT" | tr '[:upper:]' '[:lower:]')
+else
+	case "$FFMPEG_CONF" in
+		*--enable-nonfree*|*--enable-gpl*) BUILD_TYPE="full" ;;
+		*) BUILD_TYPE="minimal" ;;
+	esac
+fi
+case "$BUILD_TYPE" in
+	full|minimal) ;;
+	*) echo "[package] ERROR: unsupported build type '$BUILD_TYPE' (use full or minimal)" >&2; exit 1 ;;
+esac
+log "BUILD_TYPE=$BUILD_TYPE"
+
 log "PKG_VERSION=$PKG_VERSION"
 log "AV_VERSION=$AV_VERSION"
 
@@ -196,6 +212,7 @@ cat > "$STAGE_DIR/manifest.json" <<EOF
 {
   "name": "ffshell-ffmpeg",
   "version": "$PKG_VERSION",
+  "build_type": "$BUILD_TYPE",
   "ffmpeg_version": "$AV_VERSION",
   "ffmpeg_configuration": "$FFMPEG_CONF",
   "api_level": 25,
@@ -249,7 +266,7 @@ FFShell FFmpeg Package (per-ABI binaries only, no outer folder)
 Structure: <abi>/libffmpeg.so + manifest.json, no libs/, no include, no outer pkg dir)
 
 Installer usage (auto ABI, storage saving):
-  int fd = open("ffshell-ffmpeg-*.zip", O_RDONLY);
+  int fd = open("ffmpeg-runtime-*.zip", O_RDONLY);
   Installer.install(fd, "/data/data/com.app/files/ffshell");
   // Only host ABI (e.g. arm64-v8a) is extracted - installer searches by suffix
 
@@ -261,7 +278,7 @@ EOF
 # ---------------------------------------------------------------------------
 PKG_VERSION=$(grep '"version"' "$STAGE_DIR/manifest.json" | head -1 | cut -d'"' -f4 | tr -d ' ' | head -c 50)
 [ -n "$PKG_VERSION" ] || PKG_VERSION="1.0.0+unknown"
-PKG_NAME="ffshell-ffmpeg-${PKG_VERSION}-android"
+PKG_NAME="ffmpeg-runtime-${PKG_VERSION}-${BUILD_TYPE}-android"
 ZIP_OUT="/tmp/${PKG_NAME}.zip"
 
 log "Creating $ZIP_OUT"
@@ -314,6 +331,6 @@ cp "$STAGE_DIR/manifest.json" "$OUT_DIR/" 2>/dev/null || true
 ls -lh "$OUT_DIR/"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
-	{ echo "PKG_NAME=${PKG_NAME}"; echo "PKG_VERSION=${PKG_VERSION}"; } >> "$GITHUB_ENV"
+	{ echo "PKG_NAME=${PKG_NAME}"; echo "PKG_VERSION=${PKG_VERSION}"; echo "PKG_BUILD_TYPE=${BUILD_TYPE}"; } >> "$GITHUB_ENV"
 fi
 log "DONE PKG_NAME=${PKG_NAME}"

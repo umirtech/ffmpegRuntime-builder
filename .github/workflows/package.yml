@@ -1,4 +1,4 @@
-name: Build FFShell Distributable Package (Installer Compatible)
+name: Build and Release FFmpeg Runtime Package
 
 on:
   workflow_dispatch:
@@ -14,47 +14,82 @@ on:
   push:
     tags:
       - 'v*'
-  release:
-    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ffmpeg-runtime-package-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUILD_TYPE: ${{ github.event_name == 'push' && 'Full' || inputs.build_type || 'Minimal' }}
 
 jobs:
   build:
     name: Build via compile workflow (reuse)
     uses: ./.github/workflows/compile.yml
     with:
-      build_type: ${{ inputs.build_type }}
+      build_type: ${{ env.BUILD_TYPE }}
 
   package:
-    name: package (manifest + zip)
+    name: Package and release FFmpeg Runtime
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
-    - name: Checkout packaging script
-      uses: actions/checkout@v4
+      - name: Checkout packaging script
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Download per-ABI builds from compile workflow
-      uses: actions/download-artifact@v4
-      with:
-        pattern: ffshell-libffmpeg-*
-        path: ./combined
+      - name: Download per-ABI builds from compile workflow
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ffshell-libffmpeg-*
+          path: ./combined
 
-    - name: Build distributable package via shared package.sh
-      run: |
-        chmod +x package.sh
-        ./package.sh
+      - name: Verify all ABI artifacts are present
+        run: |
+          set -euo pipefail
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            test -f "combined/ffshell-libffmpeg-${abi}/lib/libffmpeg.so" || {
+              echo "Missing combined/ffshell-libffmpeg-${abi}/lib/libffmpeg.so"
+              exit 1
+            }
+          done
+          echo "All four ABI artifacts are present."
 
-    - name: Upload package artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ffshell-ffmpeg-package-${{ env.PKG_VERSION }}
-        path: |
-          build/package/*.zip
-        retention-days: 30
+      - name: Build distributable package via shared package.sh
+        run: |
+          chmod +x package.sh
+          BUILD_TYPE="${BUILD_TYPE}" ./package.sh
 
-    - name: Create GitHub Release (on tag)
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          build/package/*.zip
-        generate_release_notes: true
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          (cd build/package && sha256sum *.zip > sha256sums.txt)
+          ls -lh build/package
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}
+          path: |
+            build/package/*.zip
+            build/package/manifest.json
+            build/package/sha256sums.txt
+          retention-days: 30
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FFmpeg Runtime ${{ env.PKG_VERSION }} (${{ env.PKG_BUILD_TYPE }})
+          files: |
+            build/package/*.zip
+            build/package/manifest.json
+            build/package/sha256sums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
