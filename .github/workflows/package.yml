@@ -74,6 +74,7 @@ jobs:
           ls -lh build/package
 
       - name: Upload package artifact
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PKG_NAME }}
