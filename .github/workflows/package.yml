@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: ffmpeg-runtime-package-${{ github.ref }}
@@ -35,16 +36,16 @@ jobs:
   package:
     name: Package and release FFmpeg Runtime
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
       - name: Checkout packaging script
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download per-ABI builds from compile workflow
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: ffshell-libffmpeg-*
           path: ./combined
@@ -73,7 +74,7 @@ jobs:
           ls -lh build/package
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PKG_NAME }}
           path: |
@@ -84,7 +85,7 @@ jobs:
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: FFmpeg Runtime ${{ env.PKG_VERSION }} (${{ env.PKG_BUILD_TYPE }})
@@ -94,3 +95,16 @@ jobs:
             build/package/sha256sums.txt
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Remove intermediate ABI artifacts
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --paginate \
+            --jq '.artifacts[] | select(.name | startswith("ffshell-libffmpeg-")) | .id' |
+          while read -r id; do
+            [ -n "$id" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}"
+          done
