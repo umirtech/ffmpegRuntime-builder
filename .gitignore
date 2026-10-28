@@ -141,3 +141,20 @@ scripts/test-container.sh
 .github/workflows/docker-test.yml
 *.pdf
 
+# -----------------------------------------------------------------------------
+# Secrets and credentials (never commit)
+# -----------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+local.properties
+service-account*.json
+*.zip

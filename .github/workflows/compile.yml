@@ -10,6 +10,9 @@ on:
         default: "Minimal"
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   build-android:
     name: libffmpeg.so (${{ matrix.abi }})
@@ -33,7 +36,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Install build tools
       run: |
@@ -42,7 +45,7 @@ jobs:
 
     - name: Set up Android NDK
       id: setup-ndk
-      uses: nttld/setup-ndk@v1
+      uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
       with:
         ndk-version: ${{ env.NDK_VERSION }}
         add-to-path: true
@@ -183,7 +186,7 @@ jobs:
         echo "OK ${{ matrix.abi }}: out/${{ matrix.abi }}/lib/libffmpeg.so + out/${{ matrix.abi }}/include/*/*.h"
 
     - name: Upload FFShell runtime artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: ffshell-libffmpeg-${{ matrix.abi }}
         path: out/${{ matrix.abi }}
