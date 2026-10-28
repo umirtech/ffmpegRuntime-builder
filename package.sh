@@ -6,7 +6,7 @@
 #   - .github/workflows/package.yml  (CI: pass version input as $1)
 #   - local usage: ./package.sh [version]
 #
-# Produces: build/package/ffmpeg-runtime-<version>-<build_type>-android.zip
+# Produces: build/package/ffmpeg-runtime-<version>-<build_type>.zip
 #           build/package/manifest.json
 #
 set -euo pipefail
@@ -278,7 +278,7 @@ EOF
 # ---------------------------------------------------------------------------
 PKG_VERSION=$(grep '"version"' "$STAGE_DIR/manifest.json" | head -1 | cut -d'"' -f4 | tr -d ' ' | head -c 50)
 [ -n "$PKG_VERSION" ] || PKG_VERSION="1.0.0+unknown"
-PKG_NAME="ffmpeg-runtime-${PKG_VERSION}-${BUILD_TYPE}-android"
+PKG_NAME="ffmpeg-runtime-${PKG_VERSION}-${BUILD_TYPE}"
 ZIP_OUT="/tmp/${PKG_NAME}.zip"
 
 log "Creating $ZIP_OUT"
