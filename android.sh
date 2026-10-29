@@ -587,7 +587,7 @@ done
 # (their implementation is linked INTO the umbrella library instead).
 FFMPEG_FORBIDDEN_DEPS="libavcodec.so libavformat.so libavutil.so libavfilter.so libswscale.so libswresample.so libdav1d.so libx264.so libx265.so libvpx.so libopus.so libmp3lame.so libaom.so libass.so libfreetype.so libharfbuzz.so libfribidi.so libfdk-aac.so"
 # Public FFShell API symbols exported from the umbrella library.
-FFSHELL_API_SYMBOLS="ffshell_ffmpeg_run ffshell_cancel ffshell_get_version ffshell_set_log_callback ffshell_set_path_callback ffshell_ffprobe_run"
+FFSHELL_API_SYMBOLS="ffshell_ffmpeg_run ffshell_cancel ffshell_get_version ffshell_set_log_callback ffshell_set_path_callback ffshell_ffprobe_run ffshell_saf_pattern_output_supported"
 
 
 clean_and_fetch_sources(){
