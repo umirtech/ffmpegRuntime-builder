@@ -500,7 +500,7 @@ char *ffshell_saf_pattern_path_hook_request(const char *raw_path, int *fd_to_clo
     return ffshell_owned_path_hook_request(1, raw_path, fd_to_close);
 }
 
-__attribute__((visibility("default")))
+__attribute__((visibility("default"), used))
 int ffshell_saf_pattern_output_supported(void)
 {
     return 1;
