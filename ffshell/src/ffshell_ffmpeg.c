@@ -451,6 +451,62 @@ char *ffshell_path_hook_request(int is_output, const char *raw_path)
 }
 
 /* ------------------------------------------------------------------ */
+/* Caller-owned path hook for per-file image2 output (SAF patterns)     */
+/* ------------------------------------------------------------------ */
+
+static char *ffshell_owned_path_hook_request(int is_output, const char *raw_path, int *fd_to_close)
+{
+    ffshell_path_callback cb;
+    void *user;
+    char *url;
+
+    if (!raw_path || !*raw_path)
+        return NULL;
+    if (strstr(raw_path, "://"))
+        return NULL;
+    if (!strncmp(raw_path, "pipe:", 5))
+        return NULL;
+    if (fd_to_close)
+        *fd_to_close = -1;
+
+    pthread_mutex_lock(&g_lock);
+    cb   = g_path_cb;
+    user = g_path_user;
+    pthread_mutex_unlock(&g_lock);
+
+    if (!cb)
+        return NULL;
+
+    url = cb(is_output, raw_path, user);
+    if (!url)
+        return NULL;
+
+    if (fd_to_close && !strncmp(url, "appfd:", 6)) {
+        const char *p = url + 6;
+        char *end = NULL;
+        long fd;
+        errno = 0;
+        fd = strtol(p, &end, 10);
+        if (errno == 0 && end != p && *end == '\0' &&
+            fd >= 0 && fd <= INT_MAX)
+            *fd_to_close = (int)fd;
+    }
+    return url;
+}
+
+__attribute__((visibility("hidden")))
+char *ffshell_saf_pattern_path_hook_request(const char *raw_path, int *fd_to_close)
+{
+    return ffshell_owned_path_hook_request(1, raw_path, fd_to_close);
+}
+
+__attribute__((visibility("default")))
+int ffshell_saf_pattern_output_supported(void)
+{
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Concat-entry path hook                                             */
 /* ------------------------------------------------------------------ */
 

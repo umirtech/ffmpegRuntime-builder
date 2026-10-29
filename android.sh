@@ -711,6 +711,9 @@ clean_and_fetch_sources(){
 	# Route marked concat-list entries through the runtime path hook so
 	# SAF/Picked inputs resolve like any other FFmpeg input.
 	if ! patch_concat_path_hook; then return 1; fi
+	# Patch libavformat/img2enc so each image-sequence frame is resolved
+	# through the runtime path callback, allowing SAF output patterns.
+	if ! patch_saf_pattern_output_hook; then return 1; fi
 	# Guard upstream binder threadpool init: unpatched, every ffmpeg run
 	# SIGABRTs on API 35+ app processes ("cannot be shrunk after starting").
 	if ! patch_binder_threadpool_guard; then return 1; fi
@@ -938,6 +941,78 @@ with open(path, "w") as fh:
     fh.write(src)
 print("concat path hook injected")
 PYEOF
+}
+
+patch_saf_pattern_output_hook(){
+    local TARGET="$FFMPEG_SOURCE_DIR/libavformat/img2enc.c"
+    if [ ! -f "$TARGET" ]; then
+        echo "img2enc.c not found; SAF pattern output hook not injected" >&2
+        return 1
+    fi
+    if grep -q "FFSHELL_SAF_PATTERN_OUTPUT_HOOK" "$TARGET" 2>/dev/null; then
+        echo "SAF pattern output hook already present."
+        return 0
+    fi
+    python3 - "$TARGET" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as fh:
+    src = fh.read()
+
+if "FFSHELL_SAF_PATTERN_OUTPUT_HOOK" in src:
+    print("SAF pattern output hook already present")
+    sys.exit(0)
+
+anchor = '#include "mux.h"\n'
+add = '''#include "mux.h"
+
+/* ---- FFSHELL_SAF_PATTERN_OUTPUT_HOOK (injected by android.sh) -------- */
+#include <unistd.h>
+extern char *ffshell_saf_pattern_path_hook_request(const char *raw_path, int *fd_to_close);
+/* ---- end FFSHELL_SAF_PATTERN_OUTPUT_HOOK declaration ----------------- */
+'''
+assert src.count(anchor) == 1, "mux.h include not found"
+src = src.replace(anchor, add, 1)
+
+anchor2 = '        if ((ret = s->io_open(s, &pb[i], tmp[i] ? tmp[i] : filename.str, AVIO_FLAG_WRITE, &options)) < 0) {\n'
+repl = '''        /* ---- FFSHELL_SAF_PATTERN_OUTPUT_HOOK (injected by android.sh) ---- */
+        {
+            const char *ffshell_open_path = tmp[i] ? tmp[i] : filename.str;
+            char *ffshell_hook_url = NULL;
+            int ffshell_hook_fd = -1;
+            if (!img->use_rename &&
+                ffshell_open_path[0] != '/' &&
+                strncmp(ffshell_open_path, "appfd:", 6) &&
+                !strstr(ffshell_open_path, "://") &&
+                strncmp(ffshell_open_path, "pipe:", 5)) {
+                ffshell_hook_url = ffshell_saf_pattern_path_hook_request(ffshell_open_path, &ffshell_hook_fd);
+            }
+            if ((ret = s->io_open(s, &pb[i], ffshell_hook_url ? ffshell_hook_url : ffshell_open_path, AVIO_FLAG_WRITE, &options)) < 0) {
+                if (ffshell_hook_fd >= 0)
+                    close(ffshell_hook_fd);
+                av_free(ffshell_hook_url);
+                av_log(s, AV_LOG_ERROR, "Could not open file : %s\\n", ffshell_open_path);
+                goto fail;
+            }
+            if (ffshell_hook_fd >= 0)
+                close(ffshell_hook_fd);
+            av_free(ffshell_hook_url);
+        }
+        if (0) {
+        /* ---- end FFSHELL_SAF_PATTERN_OUTPUT_HOOK ------------------------- */
+'''
+assert anchor2 in src, "io_open anchor not found"
+src = src.replace(anchor2, repl, 1)
+
+with open(path, "w") as fh:
+    fh.write(src)
+print("SAF pattern output hook injected")
+PYEOF
+    if [ $? -ne 0 ]; then
+        echo "SAF pattern output hook injection failed" >&2
+        return 1
+    fi
+    return 0
 }
 
 patch_binder_threadpool_guard(){
