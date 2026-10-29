@@ -506,6 +506,9 @@ int ffshell_saf_pattern_output_supported(void)
     return 1;
 }
 
+__attribute__((used))
+static void *ffshell_saf_pattern_output_supported_keep = (void*)ffshell_saf_pattern_output_supported;
+
 /* ------------------------------------------------------------------ */
 /* Concat-entry path hook                                             */
 /* ------------------------------------------------------------------ */
