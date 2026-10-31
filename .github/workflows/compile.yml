@@ -2,7 +2,6 @@ name: Build FFShell FFmpeg runtime for Android
 
 on:
   workflow_dispatch:
-  workflow_call:
     inputs:
       build_type:
         description: "Select Build Type"
@@ -13,6 +12,13 @@ on:
           - Minimal
           - GPL
           - Full
+  workflow_call:
+    inputs:
+      build_type:
+        description: "Select Build Type"
+        required: true
+        default: "Minimal"
+        type: string
 
 permissions:
   contents: read
