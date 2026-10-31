@@ -2024,10 +2024,15 @@ buildLibsoxr(){
 	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
 	cd "${SRC_DIR}/soxr" || return 1
 	rm -rf build; mkdir -p build; cd build
+	# x86 lacks a usable OpenMP runtime in this NDK toolchain; keep it on for ARM/ARM64.
+	SOXR_OPENMP="-DWITH_OPENMP=ON"
+	case "$TARGET_ARCH" in
+		i686|x86) SOXR_OPENMP="-DWITH_OPENMP=OFF" ;;
+	esac
 	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
 		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF \
-		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_OPENMP=OFF \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 $SOXR_OPENMP \
 		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
