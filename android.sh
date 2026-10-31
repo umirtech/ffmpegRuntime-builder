@@ -2027,6 +2027,7 @@ buildLibsoxr(){
 	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
 		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
@@ -2057,12 +2058,20 @@ buildLibvidstab(){
 
 buildLibxvid(){
 	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
-	cd "${SRC_DIR}/xvidcore/build/generic" 2>/dev/null || cd "${SRC_DIR}/xvidcore" || return 1
+	cd "${SRC_DIR}/xvidcore" || return 1
+	XVID_CONFIGURE=$(find . -type f -path "*/build/generic/configure.in" | head -1)
+	[ -n "$XVID_CONFIGURE" ] || return 1
+	cd "$(dirname "$XVID_CONFIGURE")" || return 1
+	if [ ! -x ./configure ]; then
+		[ -x ./bootstrap.sh ] && ./bootstrap.sh >/dev/null 2>&1 || true
+	fi
+	[ -x ./configure ] || return 1
 	CFLAGS="$EXTRA_CFLAGS -I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
 	CC="${CROSS_PREFIX}clang" CXX="${CROSS_PREFIX}clang++" AR="$LLVM_AR" RANLIB="$LLVM_RANLIB" \
 	./configure --host="$(_android_host "$TARGET_ARCH")" --prefix="$PREFIX" --disable-assembly || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
+	rm -f "$PREFIX"/lib/libxvidcore.so* 2>/dev/null || true
 }
 
 # Conditional wrappers - only build if ENABLED_CONFIG requests it
