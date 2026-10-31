@@ -194,7 +194,7 @@ while IFS= read -r _cfg; do
 	break
 done < <(find "$SCRIPT_DIR" -type f -path "*/ffbuild/config.mak" 2>/dev/null | head -1)
 if [ -n "$FFMPEG_CONFIG_MAK" ]; then
-	FFMPEG_CONF=$(grep '^FFMPEG_CONFIGURATION=' "$FFMPEG_CONFIG_MAK" 2>/dev/null | head -1 | cut -d= -f2- | head -c 2000 || true)
+	FFMPEG_CONF=$(grep '^FFMPEG_CONFIGURATION=' "$FFMPEG_CONFIG_MAK" 2>/dev/null | head -1 | cut -d= -f2- || true)
 fi
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
