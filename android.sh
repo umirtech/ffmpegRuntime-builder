@@ -1979,6 +1979,11 @@ buildLibvorbis(){
 	./configure --host="$(_android_host "$TARGET_ARCH")" --prefix="$PREFIX" --enable-static --disable-shared --with-pic || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
+	[ -f "$PREFIX/lib/pkgconfig/vorbis.pc" ] || return 1
+	[ -f "$PREFIX/lib/pkgconfig/vorbisenc.pc" ] || return 1
+	# FFmpeg uses `pkg-config --libs` (not --static); expose private deps directly.
+	sed -i 's|^Libs:.*|Libs: -L${libdir} -lvorbis -logg -lm|' "$PREFIX/lib/pkgconfig/vorbis.pc" || true
+	sed -i 's|^Libs:.*|Libs: -L${libdir} -lvorbisenc -lvorbis -logg -lm|' "$PREFIX/lib/pkgconfig/vorbisenc.pc" || true
 }
 
 buildLibwebp(){
