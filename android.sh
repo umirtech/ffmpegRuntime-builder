@@ -1987,6 +1987,11 @@ buildLibwebp(){
 		-DWEBP_BUILD_EXTRAS=OFF -DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
+	# FFmpeg's pkg-config check uses non-static Libs; include SharpYUV explicitly.
+	WEBP_PC="$PREFIX/lib/pkgconfig/libwebp.pc"
+	if [ -f "$WEBP_PC" ]; then
+		sed -i 's|^Libs:.*|Libs: -L${libdir} -lwebp -lsharpyuv|' "$WEBP_PC" || true
+	fi
 }
 
 buildLibsvtav1(){
