@@ -714,6 +714,12 @@ fi
 				fi
 				flag="enable-libass"
 				;;
+			ogg)
+				if echo "$ENABLED_CONFIG" | grep -q "enable-libvorbis"; then
+					need_fetch=1
+				fi
+				flag="enable-libvorbis"
+				;;
 		esac
 		case "$lib" in
 			dav1d)		url="$DAV1D_URL"; dir="dav1d" ;;
