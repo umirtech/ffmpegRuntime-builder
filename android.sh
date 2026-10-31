@@ -594,16 +594,22 @@ clean_and_fetch_sources(){
 	# Isolated, reproducible builds: always start from a pristine source tree.
 	echo -e "\e[1;32mFetching a clean FFmpeg source tree...\e[0m"
 
+	if [ -z "${FFMPEG_TAG:-}" ]; then
+	FFMPEG_TAG=$(git ls-remote --tags "$FFMPEG_URL" 2>/dev/null | sed 's|.*/||' | grep -E '^n[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -1)
+fi
+: "${FFMPEG_TAG:=n9.0.2}"
 	if [ -d "$FFMPEG_SOURCE_DIR" ] && [ ! -d "$FFMPEG_SOURCE_DIR/.git" ]; then
 		echo "Existing $FFMPEG_SOURCE_DIR is not a git checkout - removing for clean fetch"
 		rm -rf "$FFMPEG_SOURCE_DIR"
 	fi
 	if [ -d "$FFMPEG_SOURCE_DIR/.git" ]; then
-		git -C "$FFMPEG_SOURCE_DIR" fetch --depth 1 origin
-		git -C "$FFMPEG_SOURCE_DIR" reset --hard origin/master
+		git -C "$FFMPEG_SOURCE_DIR" reset --hard
+		git -C "$FFMPEG_SOURCE_DIR" clean -fdx
+		git -C "$FFMPEG_SOURCE_DIR" fetch --depth 1 origin tag "$FFMPEG_TAG"
+		git -C "$FFMPEG_SOURCE_DIR" checkout "$FFMPEG_TAG"
 		git -C "$FFMPEG_SOURCE_DIR" clean -fdx
 	else
-		git clone --depth 1 "$FFMPEG_URL" "$FFMPEG_SOURCE_DIR" || return 1
+		git clone --depth 1 --branch "$FFMPEG_TAG" "$FFMPEG_URL" "$FFMPEG_SOURCE_DIR" || return 1
 	fi
 
 	# Conditional external deps: only fetch what ENABLED_CONFIG actually needs.

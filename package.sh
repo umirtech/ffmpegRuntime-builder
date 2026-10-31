@@ -131,9 +131,16 @@ fi
 # ---------------------------------------------------------------------------
 # Version detection (input > git tag > strings > ffversion.h > git sha)
 # ---------------------------------------------------------------------------
-FFVERSION_H_CANDIDATES=(
-	"$SCRIPT_DIR/ffmpeg-build/$API_LEVEL/$PRIMARY_ABI/include/libavutil/ffversion.h"
-	"$SCRIPT_DIR/ffmpeg-build/$PRIMARY_ABI/include/libavutil/ffversion.h"
+FFVERSION_H_CANDIDATES=()
+# Generated headers may live under several build layouts (with/without API level).
+for _abi in "$PRIMARY_ABI" $AVAILABLE_ABIS; do
+	for _root in "$SCRIPT_DIR/ffmpeg-build" "$SCRIPT_DIR/ffmpeg-build/$API_LEVEL"; do
+		FFVERSION_H_CANDIDATES+=("$_root/$_abi/include/libavutil/ffversion.h")
+	done
+done
+FFVERSION_H_CANDIDATES+=(
+	"$SCRIPT_DIR/build-src/ffmpeg/libavutil/ffversion.h"
+	"$SCRIPT_DIR/ffmpeg/libavutil/ffversion.h"
 )
 
 if [ -n "$VERSION_INPUT" ]; then
@@ -146,7 +153,7 @@ else
 		| xargs -I{} sh -c 'strings {} | grep -m1 "N-.*-g" | head -1' 2>/dev/null || true)
 	if [ -z "$PKG_VERSION" ]; then
 		for f in "${FFVERSION_H_CANDIDATES[@]}"; do
-			PKG_VERSION=$(grep -m1 '"define FFMPEG_VERSION"' "$f" 2>/dev/null | cut -d'"' -f2 || true)
+			PKG_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$f" 2>/dev/null | cut -d'"' -f2 || true)
 			[ -n "$PKG_VERSION" ] && break
 		done
 		[ -n "$PKG_VERSION" ] || PKG_VERSION="git-$(git rev-parse --short HEAD)"
@@ -156,14 +163,14 @@ fi
 
 AV_VERSION=""
 for f in "${FFVERSION_H_CANDIDATES[@]}"; do
-	AV_VERSION=$(grep -m1 '"define FFMPEG_VERSION"' "$f" 2>/dev/null | cut -d'"' -f2 || true)
+	AV_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$f" 2>/dev/null | cut -d'"' -f2 || true)
 	[ -n "$AV_VERSION" ] && break
 done
 # Fallback: try ffversion.h for any available ABI (when PRIMARY_ABI not built)
 if [ -z "$AV_VERSION" ]; then
 	for abi in $AVAILABLE_ABIS; do
 		for cand in "$SCRIPT_DIR/ffmpeg-build/$API_LEVEL/$abi/include/libavutil/ffversion.h" "$SCRIPT_DIR/ffmpeg-build/$abi/include/libavutil/ffversion.h"; do
-			AV_VERSION=$(grep -m1 '"define FFMPEG_VERSION"' "$cand" 2>/dev/null | cut -d'"' -f2 || true)
+			AV_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$cand" 2>/dev/null | cut -d'"' -f2 || true)
 			[ -n "$AV_VERSION" ] && break 2
 		done
 	done
@@ -179,10 +186,16 @@ fi
 [ -n "$AV_VERSION" ] || AV_VERSION="unknown"
 
 FFMPEG_CONF=""
-for f in "$SCRIPT_DIR/ffmpeg/ffbuild/config.mak" "$SCRIPT_DIR/build-src/ffmpeg/ffbuild/config.mak"; do
-	FFMPEG_CONF=$(grep FFMPEG_CONFIGURATION "$f" 2>/dev/null | cut -d= -f2- | head -c 500 || true)
-	[ -n "$FFMPEG_CONF" ] && break
-done
+FFMPEG_CONFIG_MAK=""
+# Prefer generated build trees (they contain the real configure flags).
+while IFS= read -r _cfg; do
+	[ -n "$_cfg" ] || continue
+	FFMPEG_CONFIG_MAK="$_cfg"
+	break
+done < <(find "$SCRIPT_DIR" -type f -path "*/ffbuild/config.mak" 2>/dev/null | head -1)
+if [ -n "$FFMPEG_CONFIG_MAK" ]; then
+	FFMPEG_CONF=$(grep '^FFMPEG_CONFIGURATION=' "$FFMPEG_CONFIG_MAK" 2>/dev/null | head -1 | cut -d= -f2- | head -c 2000 || true)
+fi
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Build type: explicit input/env wins; otherwise infer from FFmpeg configuration.
@@ -199,6 +212,20 @@ case "$BUILD_TYPE" in
 	*) echo "[package] ERROR: unsupported build type '$BUILD_TYPE' (use full or minimal)" >&2; exit 1 ;;
 esac
 log "BUILD_TYPE=$BUILD_TYPE"
+
+# Derive license name from the FFmpeg configuration.
+LICENSE_NAME="LGPL-2.1-or-later"
+case "$FFMPEG_CONF" in
+	*--enable-nonfree*) LICENSE_NAME="Non-free" ;;
+	*--enable-gpl*)
+		case "$FFMPEG_CONF" in
+			*--enable-version3*) LICENSE_NAME="GPL-3.0-or-later" ;;
+			*) LICENSE_NAME="GPL-2.0-or-later" ;;
+		esac
+		;;
+	*--enable-version3*) LICENSE_NAME="LGPL-3.0-or-later" ;;
+esac
+log "LICENSE_NAME=$LICENSE_NAME"
 
 log "PKG_VERSION=$PKG_VERSION"
 log "AV_VERSION=$AV_VERSION"
@@ -220,7 +247,7 @@ cat > "$STAGE_DIR/manifest.json" <<EOF
   "abIs": [$ABIS_JSON],
   "ffshell_api": ["ffshell_ffmpeg_run", "ffshell_cancel", "ffshell_get_version", "ffshell_set_log_callback", "ffshell_set_path_callback", "ffshell_ffprobe_run"],
   "minSdk": 25,
-  "license": "LGPL-2.1",
+  "license": "$LICENSE_NAME",
   "build_date": "$BUILD_DATE",
   "instructions": "Use installer: Installer.install(packageFd, getNoBackupFilesDir()+\"/ffshell\") - installer auto-detects ABI and extracts only required lib.",
   "libs": {
@@ -256,9 +283,19 @@ python3 -m json.tool "$STAGE_DIR/manifest.json" >/dev/null && log "manifest.json
 # Package extras (README/LICENSE/INSTALL.txt with CI fallbacks)
 # ---------------------------------------------------------------------------
 cp README.md "$STAGE_DIR/README.md" 2>/dev/null || printf '# FFShell FFmpeg\n' > "$STAGE_DIR/README.md"
-if [ -f "LICENSE" ]; then cp LICENSE "$STAGE_DIR/LICENSE" 2>/dev/null || true
-elif [ -f "COPYING.LGPLv2.1" ]; then cp COPYING.LGPLv2.1 "$STAGE_DIR/LICENSE" 2>/dev/null || true
-else printf 'LGPL-2.1\n' > "$STAGE_DIR/LICENSE"
+LICENSE_SRC=""
+case "$LICENSE_NAME" in
+	"GPL-3.0-or-later") [ -f COPYING.GPLv3 ] && LICENSE_SRC="COPYING.GPLv3" ;;
+	"GPL-2.0-or-later") [ -f COPYING.GPLv2 ] && LICENSE_SRC="COPYING.GPLv2" ;;
+	"LGPL-3.0-or-later") [ -f COPYING.LGPLv3 ] && LICENSE_SRC="COPYING.LGPLv3" ;;
+	"LGPL-2.1-or-later") [ -f COPYING.LGPLv2.1 ] && LICENSE_SRC="COPYING.LGPLv2.1" ;;
+esac
+if [ -n "$LICENSE_SRC" ]; then
+	cp "$LICENSE_SRC" "$STAGE_DIR/LICENSE"
+elif [ -f "LICENSE" ]; then
+	cp LICENSE "$STAGE_DIR/LICENSE"
+else
+	printf '%s\n' "$LICENSE_NAME" > "$STAGE_DIR/LICENSE"
 fi
 cat > "$STAGE_DIR/INSTALL.txt" <<EOF
 FFShell FFmpeg Package (per-ABI binaries only, no outer folder)
