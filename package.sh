@@ -285,12 +285,31 @@ python3 -m json.tool "$STAGE_DIR/manifest.json" >/dev/null && log "manifest.json
 # ---------------------------------------------------------------------------
 cp README.md "$STAGE_DIR/README.md" 2>/dev/null || printf '# FFShell FFmpeg\n' > "$STAGE_DIR/README.md"
 LICENSE_SRC=""
+# FFmpeg license texts live in the FFmpeg source tree, not the builder root.
+LICENSE_SEARCH_DIRS=(
+	"$SCRIPT_DIR"
+	"$SCRIPT_DIR/build-src/ffmpeg"
+	"$SCRIPT_DIR/ffmpeg"
+)
 case "$LICENSE_NAME" in
-	"GPL-3.0-or-later") [ -f COPYING.GPLv3 ] && LICENSE_SRC="COPYING.GPLv3" ;;
-	"GPL-2.0-or-later") [ -f COPYING.GPLv2 ] && LICENSE_SRC="COPYING.GPLv2" ;;
-	"LGPL-3.0-or-later") [ -f COPYING.LGPLv3 ] && LICENSE_SRC="COPYING.LGPLv3" ;;
-	"LGPL-2.1-or-later") [ -f COPYING.LGPLv2.1 ] && LICENSE_SRC="COPYING.LGPLv2.1" ;;
+	"GPL-3.0-or-later") _lic_file="COPYING.GPLv3" ;;
+	"GPL-2.0-or-later") _lic_file="COPYING.GPLv2" ;;
+	"LGPL-3.0-or-later") _lic_file="COPYING.LGPLv3" ;;
+	"LGPL-2.1-or-later") _lic_file="COPYING.LGPLv2.1" ;;
+	*) _lic_file="" ;;
 esac
+if [ -n "$_lic_file" ]; then
+	for _d in "${LICENSE_SEARCH_DIRS[@]}"; do
+		if [ -f "$_d/$_lic_file" ]; then
+			LICENSE_SRC="$_d/$_lic_file"
+			break
+		fi
+	done
+	# Fallback: recursive search
+	if [ -z "$LICENSE_SRC" ]; then
+		LICENSE_SRC=$(find "$SCRIPT_DIR" -type f -name "$_lic_file" 2>/dev/null | head -1)
+	fi
+fi
 if [ -n "$LICENSE_SRC" ]; then
 	cp "$LICENSE_SRC" "$STAGE_DIR/LICENSE"
 elif [ -f "LICENSE" ]; then
