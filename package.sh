@@ -221,7 +221,9 @@ if [ -n "$FFMPEG_CONF" ]; then
 	esac
 elif [ -n "$BIN_LICENSE" ]; then
 	case "$BIN_LICENSE" in
-		*"version 3"*|*"v3"*) LICENSE_NAME="LGPL-3.0-or-later" ;;
+		*"LGPL version 3"*|*"LGPLv3"*) LICENSE_NAME="LGPL-3.0-or-later" ;;
+		*"LGPL"*) LICENSE_NAME="LGPL-2.1-or-later" ;;
+		*"GPL version 3"*|*"GPLv3"*) LICENSE_NAME="GPL-3.0-or-later" ;;
 		*"GPL"*) LICENSE_NAME="GPL-2.0-or-later" ;;
 		*"Non-free"*|*"non-free"*) LICENSE_NAME="Non-free" ;;
 		*) LICENSE_NAME="LGPL-2.1-or-later" ;;
@@ -238,7 +240,7 @@ else
 			*--enable-nonfree*|*--enable-gpl*) BUILD_TYPE="full" ;;
 			*) BUILD_TYPE="minimal" ;;
 		esac
-	elif [ -n "$BIN_LICENSE" ] && { echo "$BIN_LICENSE" | grep -qi "GPL\|non-free"; }; then
+	elif [ -n "$BIN_LICENSE" ] && { echo "$BIN_LICENSE" | grep -qiE "GPL (version|v)|non-free"; }; then
 		BUILD_TYPE="full"
 	else
 		BUILD_TYPE="minimal"
@@ -352,7 +354,9 @@ if [ -z "$LICENSE_SRC" ] && [ -n "$_lic_file" ]; then
 	fi
 fi
 if [ -n "$LICENSE_SRC" ]; then
-	cp "$LICENSE_SRC" "$STAGE_DIR/LICENSE"
+	if [ "$LICENSE_SRC" != "$STAGE_DIR/LICENSE" ]; then
+		cp "$LICENSE_SRC" "$STAGE_DIR/LICENSE"
+	fi
 elif [ -f "LICENSE" ]; then
 	cp LICENSE "$STAGE_DIR/LICENSE"
 else
