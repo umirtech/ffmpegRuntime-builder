@@ -173,6 +173,7 @@ if [ -z "$AV_VERSION" ]; then
 	for try_abi in "$PRIMARY_ABI" $AVAILABLE_ABIS; do
 		[ -f "$STAGE_DIR/$try_abi/libffmpeg.so" ] || continue
 		AV_VERSION=$(strings "$STAGE_DIR/$try_abi/libffmpeg.so" 2>/dev/null | grep -E "N-[0-9]+-g[0-9a-f]+" | head -1 || true)
+		[ -z "$AV_VERSION" ] && AV_VERSION=$(strings "$STAGE_DIR/$try_abi/libffmpeg.so" 2>/dev/null | grep -oE "n[0-9]+\.[0-9]+(\.[0-9]+)?" | head -1 || true)
 		[ -n "$AV_VERSION" ] && break
 	done
 fi
@@ -197,34 +198,57 @@ if [ -n "$FFMPEG_CONFIG_MAK" ]; then
 fi
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# Build type: explicit input/env wins; otherwise infer from FFmpeg configuration.
+# Recover license/build hints from the binary when config.mak is unavailable.
+BIN_LICENSE=""
+for try_abi in "$PRIMARY_ABI" $AVAILABLE_ABIS; do
+	[ -f "$STAGE_DIR/$try_abi/libffmpeg.so" ] || continue
+	BIN_LICENSE=$(strings "$STAGE_DIR/$try_abi/libffmpeg.so" 2>/dev/null | grep -m1 "libavutil license:" | sed 's/.*: //' || true)
+	[ -n "$BIN_LICENSE" ] && break
+done
+
+# Derive license name.
+LICENSE_NAME="LGPL-2.1-or-later"
+if [ -n "$FFMPEG_CONF" ]; then
+	case "$FFMPEG_CONF" in
+		*--enable-nonfree*) LICENSE_NAME="Non-free" ;;
+		*--enable-gpl*)
+			case "$FFMPEG_CONF" in
+				*--enable-version3*) LICENSE_NAME="GPL-3.0-or-later" ;;
+				*) LICENSE_NAME="GPL-2.0-or-later" ;;
+			esac
+			;;
+		*--enable-version3*) LICENSE_NAME="LGPL-3.0-or-later" ;;
+	esac
+elif [ -n "$BIN_LICENSE" ]; then
+	case "$BIN_LICENSE" in
+		*"version 3"*|*"v3"*) LICENSE_NAME="LGPL-3.0-or-later" ;;
+		*"GPL"*) LICENSE_NAME="GPL-2.0-or-later" ;;
+		*"Non-free"*|*"non-free"*) LICENSE_NAME="Non-free" ;;
+		*) LICENSE_NAME="LGPL-2.1-or-later" ;;
+	esac
+fi
+log "LICENSE_NAME=$LICENSE_NAME"
+
+# Build type: explicit input/env wins; otherwise infer.
 if [ -n "$BUILD_TYPE_INPUT" ]; then
 	BUILD_TYPE=$(printf '%s' "$BUILD_TYPE_INPUT" | tr '[:upper:]' '[:lower:]')
 else
-	case "$FFMPEG_CONF" in
-		*--enable-nonfree*|*--enable-gpl*) BUILD_TYPE="full" ;;
-		*) BUILD_TYPE="minimal" ;;
-	esac
+	if [ -n "$FFMPEG_CONF" ]; then
+		case "$FFMPEG_CONF" in
+			*--enable-nonfree*|*--enable-gpl*) BUILD_TYPE="full" ;;
+			*) BUILD_TYPE="minimal" ;;
+		esac
+	elif [ -n "$BIN_LICENSE" ] && { echo "$BIN_LICENSE" | grep -qi "GPL\|non-free"; }; then
+		BUILD_TYPE="full"
+	else
+		BUILD_TYPE="minimal"
+	fi
 fi
 case "$BUILD_TYPE" in
 	full|minimal) ;;
 	*) echo "[package] ERROR: unsupported build type '$BUILD_TYPE' (use full or minimal)" >&2; exit 1 ;;
 esac
 log "BUILD_TYPE=$BUILD_TYPE"
-
-# Derive license name from the FFmpeg configuration.
-LICENSE_NAME="LGPL-2.1-or-later"
-case "$FFMPEG_CONF" in
-	*--enable-nonfree*) LICENSE_NAME="Non-free" ;;
-	*--enable-gpl*)
-		case "$FFMPEG_CONF" in
-			*--enable-version3*) LICENSE_NAME="GPL-3.0-or-later" ;;
-			*) LICENSE_NAME="GPL-2.0-or-later" ;;
-		esac
-		;;
-	*--enable-version3*) LICENSE_NAME="LGPL-3.0-or-later" ;;
-esac
-log "LICENSE_NAME=$LICENSE_NAME"
 
 log "PKG_VERSION=$PKG_VERSION"
 log "AV_VERSION=$AV_VERSION"
@@ -283,7 +307,7 @@ python3 -m json.tool "$STAGE_DIR/manifest.json" >/dev/null && log "manifest.json
 # ---------------------------------------------------------------------------
 # Package extras (README/LICENSE/INSTALL.txt with CI fallbacks)
 # ---------------------------------------------------------------------------
-cp README.md "$STAGE_DIR/README.md" 2>/dev/null || printf '# FFShell FFmpeg\n' > "$STAGE_DIR/README.md"
+# README.md is intentionally not packaged.
 LICENSE_SRC=""
 # FFmpeg license texts live in the FFmpeg source tree, not the builder root.
 LICENSE_SEARCH_DIRS=(
@@ -308,6 +332,23 @@ if [ -n "$_lic_file" ]; then
 	# Fallback: recursive search
 	if [ -z "$LICENSE_SRC" ]; then
 		LICENSE_SRC=$(find "$SCRIPT_DIR" -type f -name "$_lic_file" 2>/dev/null | head -1)
+	fi
+fi
+# If still missing, download the FFmpeg license text.
+if [ -z "$LICENSE_SRC" ] && [ -n "$_lic_file" ]; then
+	_lic_url=""
+	case "$_lic_file" in
+		COPYING.GPLv3) _lic_url="https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.GPLv3" ;;
+		COPYING.GPLv2) _lic_url="https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.GPLv2" ;;
+		COPYING.LGPLv3) _lic_url="https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv3" ;;
+		COPYING.LGPLv2.1) _lic_url="https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1" ;;
+	esac
+	if [ -n "$_lic_url" ]; then
+		if command -v curl >/dev/null 2>&1; then
+			curl -fsSL "$_lic_url" -o "$STAGE_DIR/LICENSE" 2>/dev/null && LICENSE_SRC="$STAGE_DIR/LICENSE"
+		elif command -v wget >/dev/null 2>&1; then
+			wget -qO "$STAGE_DIR/LICENSE" "$_lic_url" 2>/dev/null && LICENSE_SRC="$STAGE_DIR/LICENSE"
+		fi
 	fi
 fi
 if [ -n "$LICENSE_SRC" ]; then
