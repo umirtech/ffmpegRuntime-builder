@@ -2027,7 +2027,7 @@ buildLibsoxr(){
 	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
 		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF \
-		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DWITH_OPENMP=OFF \
 		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
 	make -j"$JOBS" || return 1
 	make install || return 1
@@ -2587,6 +2587,7 @@ configure_ffmpeg(){
    --extra-cflags="-fpic -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D__BIONIC_NO_PAGE_SIZE_MACRO -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security $EXTRA_CFLAGS -I$PREFIX/include " \
    --extra-cxxflags="-fpic -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D__BIONIC_NO_PAGE_SIZE_MACRO -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -std=c++17 -fexceptions -frtti $EXTRA_CXXFLAGS -I$PREFIX/include " \
    --extra-ldflags=" -Wl,-z,max-page-size=16384 -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments -L$SYSROOT/usr/lib/$TARGET_ARCH-linux-android/$ANDROID_API_LEVEL -L$PREFIX/lib" \
+   --extra-libs="-lm" \
    --enable-pic \
    ${ENABLED_CONFIG} \
    ${DISABLED_CONFIG} \
