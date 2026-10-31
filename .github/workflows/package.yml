@@ -6,11 +6,12 @@ on:
       build_type:
         description: "Select Build Type"
         required: true
-        default: "Minimal"
+        default: "GPL"
         type: choice
         options:
-          - Full
           - Minimal
+          - GPL
+          - Full
   push:
     tags:
       - 'v*'
@@ -24,14 +25,14 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUILD_TYPE: ${{ github.event_name == 'push' && 'Full' || inputs.build_type || 'Minimal' }}
+  BUILD_TYPE: ${{ github.event_name == 'push' && 'GPL' || inputs.build_type || 'GPL' }}
 
 jobs:
   build:
     name: Build via compile workflow (reuse)
     uses: ./.github/workflows/compile.yml
     with:
-      build_type: ${{ github.event_name == 'push' && 'Full' || inputs.build_type || 'Minimal' }}
+      build_type: ${{ github.event_name == 'push' && 'GPL' || inputs.build_type || 'GPL' }}
 
   package:
     name: Package and release FFmpeg Runtime

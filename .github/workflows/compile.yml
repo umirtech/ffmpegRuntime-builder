@@ -8,7 +8,11 @@ on:
         description: "Select Build Type"
         required: true
         default: "Minimal"
-        type: string
+        type: choice
+        options:
+          - Minimal
+          - GPL
+          - Full
 
 permissions:
   contents: read
@@ -61,9 +65,11 @@ jobs:
         BUILD_ARGS=""
 
         if [ "${{ inputs.build_type }}" = "Full" ]; then
-        BUILD_ARGS="--full"
+          BUILD_ARGS="--full"
+        elif [ "${{ inputs.build_type }}" = "GPL" ]; then
+          BUILD_ARGS="--gpl"
         fi
-        
+
         set -e
         chmod +x android.sh
         ./android.sh --arch "${FFSHELL_ARCH_OVERRIDE}" ${BUILD_ARGS}

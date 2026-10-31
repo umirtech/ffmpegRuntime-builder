@@ -114,14 +114,16 @@ ANDROID_NDK_URL="https://dl.google.com/android/repository/android-ndk-${ANDROID_
 NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 JOBS="${JOBS:-$(( NPROC > 8 ? 8 : NPROC ))}"
 
-# Argument parsing: --full, --arch, --help (supports FULL_BUILD=1 env)
+# Argument parsing: --full, --gpl, --arch, --help (supports FULL_BUILD=1 env)
 FULL_BUILD="${FULL_BUILD:-0}"
+GPL_BUILD="${GPL_BUILD:-0}"
 ARCH_SET=0
 # Preserve original args for later full-build header print
 ARGS=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--full|--full-build) FULL_BUILD=1; shift ;;
+		--full|--full-build) FULL_BUILD=1; GPL_BUILD=0; shift ;;
+		--gpl|--gpl-build) GPL_BUILD=1; FULL_BUILD=0; shift ;;
 		--arch)
 			if [ -z "${2:-}" ]; then echo -e "\e[1;31mError: --arch requires a value (e.g. --arch x86_64,armv8a)\e[0m" >&2; exit 1; fi
 			ARCH_INPUT="$2"
@@ -150,16 +152,17 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 		--help|-h)
-			echo "Usage: $0 [--arch ARCHS] [--full] [--help]"
+			echo "Usage: $0 [--arch ARCHS] [--gpl|--full] [--help]"
 			echo "  --arch ARCHS  Comma-separated list: x86_64,x86,armv8a,armv7a (aliases: arm64-v8a,armeabi-v7a,aarch64,arm,i686,x86-64 etc.)"
 			echo "                Default (no --arch): builds all architectures: armv8a,armv7a,x86,x86-64"
 			echo "                Examples:"
 			echo "                  $0 --arch x86_64"
-			echo "                  $0 --arch x86_64,armv8a --full"
-			echo "                  $0 --arch=x86,armv7a"
-			echo "  --full        Full build: enables all decoders/encoders/muxers/demuxers/parsers/bsfs/protocols/filters/hwaccels/indevs/outdevs + avdevice/network/zlib + dav1d/x264/x265/vpx/opus/mp3lame/aom/ass/fdk-aac (GPL/nonfree)"
+			echo "                  $0 --arch x86_64,armv8a --gpl"
+			echo "                  $0 --arch=x86,armv7a --full"
+			echo "  --gpl         GPL build: full feature set with GPL components, no non-free libraries (redistributable)"
+			echo "  --full        Full build: enables all components including non-free libraries (not redistributable)"
 			echo "  --help        Show this help"
-			echo "Env: FULL_BUILD=1 $0  JOBS=8 $0  ARCH_LIST=\"x86-64 armv8a\" $0"
+			echo "Env: GPL_BUILD=1 $0  FULL_BUILD=1 $0  JOBS=8 $0  ARCH_LIST=\"x86-64 armv8a\" $0"
 			exit 0
 			;;
 		--) shift; break ;;
@@ -194,6 +197,66 @@ else
 fi
 
 
+
+# GPL build override: full feature set, GPL components only (no non-free).
+if [ "${GPL_BUILD:-0}" = "1" ]; then
+	ENABLED_CONFIG="\
+		--enable-avcodec \
+		--enable-avformat \
+		--enable-avutil \
+		--enable-swscale \
+		--enable-swresample \
+		--enable-avfilter \
+		--enable-avdevice \
+		--enable-network \
+		--enable-zlib \
+		--enable-mediacodec \
+		--enable-jni \
+		--enable-libdav1d \
+		--enable-libx264 \
+		--enable-libx265 \
+		--enable-libvpx \
+		--enable-libopus \
+		--enable-libmp3lame \
+		--enable-libaom \
+		--enable-libass \
+		--enable-libfreetype \
+		--enable-libharfbuzz \
+		--enable-libfribidi \
+		--enable-gpl \
+		--enable-version3 \
+		--enable-hwaccel=* \
+		--enable-decoder=* \
+		--enable-encoder=* \
+		--enable-muxer=* \
+		--enable-demuxer=* \
+		--enable-parser=* \
+		--enable-bsf=* \
+		--enable-protocol=* \
+		--enable-filter=* \
+		--enable-indev=* \
+		--enable-outdev=* \
+		--enable-ffmpeg \
+		--enable-ffprobe \
+		--enable-shared \
+		--enable-optimizations \
+		--enable-lto \
+		--enable-pic "
+
+	DISABLED_CONFIG="\
+		--disable-small \
+		--disable-v4l2-m2m \
+		--disable-cuda-llvm \
+		--disable-static \
+		--disable-debug \
+		--disable-ffplay \
+		--disable-doc \
+		--disable-symver "
+
+	echo -e "\e[1;32mGPL build config active (no non-free components):\e[0m"
+	echo "  ENABLED: avcodec/avformat/avutil/swscale/swresample/avfilter/avdevice/network/zlib + mediacodec/jni + dav1d/x264/x265/vpx/opus/mp3lame/aom/ass/freetype/harfbuzz/fribidi + GPLv3 + hwaccel/decoder/encoder/muxer/demuxer/parser/bsf/protocol/filter/indev/outdev = *"
+	echo "  DISABLED: non-free (fdk-aac), small/v4l2-m2m/cuda-llvm/static/debug/ffplay/doc/symver"
+fi
 
 # Full build override (only configs, no other logic changed)
 if [ "${FULL_BUILD:-0}" = "1" ]; then
