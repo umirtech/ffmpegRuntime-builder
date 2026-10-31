@@ -100,6 +100,15 @@ FREETYPE_VERSION="2.13.3"
 FREETYPE_URL="https://github.com/freetype/freetype.git"
 FRIBIDI_URL="https://github.com/fribidi/fribidi.git"
 HARFBUZZ_URL="https://github.com/harfbuzz/harfbuzz.git"
+OGG_URL="https://github.com/xiph/ogg.git"
+VORBIS_URL="https://github.com/xiph/vorbis.git"
+WEBP_URL="https://chromium.googlesource.com/webm/libwebp.git"
+SVTAV1_URL="https://gitlab.com/AOMediaCodec/SVT-AV1.git"
+JXL_URL="https://github.com/libjxl/libjxl.git"
+SOXR_URL="https://github.com/chirlu/soxr.git"
+RUBBERBAND_URL="https://github.com/breakfastquay/rubberband.git"
+VIDSTAB_URL="https://github.com/georgmartius/vid.stab.git"
+XVID_URL="https://github.com/arthenica/xvidcore.git"
 
 
 
@@ -223,6 +232,14 @@ if [ "${GPL_BUILD:-0}" = "1" ]; then
 		--enable-libfreetype \
 		--enable-libharfbuzz \
 		--enable-libfribidi \
+		--enable-libvorbis \
+		--enable-libwebp \
+		--enable-libsvtav1 \
+		--enable-libjxl \
+		--enable-libsoxr \
+		--enable-librubberband \
+		--enable-libvidstab \
+		--enable-libxvid \
 		--enable-gpl \
 		--enable-version3 \
 		--enable-hwaccel=* \
@@ -284,6 +301,14 @@ if [ "${FULL_BUILD:-0}" = "1" ]; then
 		--enable-libharfbuzz \
 		--enable-libfribidi \
 		--enable-libfdk-aac \
+		--enable-libvorbis \
+		--enable-libwebp \
+		--enable-libsvtav1 \
+		--enable-libjxl \
+		--enable-libsoxr \
+		--enable-librubberband \
+		--enable-libvidstab \
+		--enable-libxvid \
 		--enable-gpl \
 		--enable-nonfree \
 		--enable-version3 \
@@ -648,7 +673,7 @@ for _opt in avdevice; do
 done
 # Runtime dependencies that must NEVER appear as DT_NEEDED of libffmpeg.so
 # (their implementation is linked INTO the umbrella library instead).
-FFMPEG_FORBIDDEN_DEPS="libavcodec.so libavformat.so libavutil.so libavfilter.so libswscale.so libswresample.so libdav1d.so libx264.so libx265.so libvpx.so libopus.so libmp3lame.so libaom.so libass.so libfreetype.so libharfbuzz.so libfribidi.so libfdk-aac.so"
+FFMPEG_FORBIDDEN_DEPS="libavcodec.so libavformat.so libavutil.so libavfilter.so libswscale.so libswresample.so libdav1d.so libx264.so libx265.so libvpx.so libopus.so libmp3lame.so libaom.so libass.so libfreetype.so libharfbuzz.so libfribidi.so libfdk-aac.so libvorbis.so libogg.so libwebp.so libSvtAv1Enc.so libjxl.so libsoxr.so librubberband.so libvidstab.so libxvidcore.so"
 # Public FFShell API symbols exported from the umbrella library.
 FFSHELL_API_SYMBOLS="ffshell_ffmpeg_run ffshell_cancel ffshell_get_version ffshell_set_log_callback ffshell_set_path_callback ffshell_ffprobe_run ffshell_saf_pattern_output_supported"
 
@@ -677,7 +702,7 @@ fi
 
 	# Conditional external deps: only fetch what ENABLED_CONFIG actually needs.
 	# Generic mapping: enable-lib* -> directory + URL
-	for lib in dav1d x264 x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac; do
+	for lib in dav1d x264 x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac ogg vorbis webp svtav1 jxl soxr rubberband vidstab xvid; do
 		# Map enable flag: lib name with dash handling
 		flag="enable-lib${lib}"
 		# freetype/fribidi/harfbuzz are deps for libass, not directly in ENABLED_CONFIG – fetch when libass enabled
@@ -703,6 +728,15 @@ fi
 			harfbuzz)	url="$HARFBUZZ_URL"; dir="harfbuzz" ;;
 			ass)		url="$ASS_URL"; dir="libass" ;;
 			fdk-aac)	url="$FDKAAC_URL"; dir="fdk-aac" ;;
+			ogg)		url="$OGG_URL"; dir="ogg" ;;
+			vorbis)		url="$VORBIS_URL"; dir="vorbis" ;;
+			webp)		url="$WEBP_URL"; dir="libwebp" ;;
+			svtav1)		url="$SVTAV1_URL"; dir="SVT-AV1" ;;
+			jxl)		url="$JXL_URL"; dir="libjxl" ;;
+			soxr)		url="$SOXR_URL"; dir="soxr" ;;
+			rubberband)	url="$RUBBERBAND_URL"; dir="rubberband" ;;
+			vidstab)	url="$VIDSTAB_URL"; dir="vid.stab" ;;
+			xvid)		url="$XVID_URL"; dir="xvidcore" ;;
 		esac
 		# Normalize flag for mp3lame (ffmpeg uses --enable-libmp3lame)
 		if [ "$lib" = "mp3lame" ]; then flag="enable-libmp3lame"; fi
@@ -1899,6 +1933,133 @@ buildLibfdkaac(){
 	make install || return 1
 }
 
+_android_cmake_abi() {
+	case "$1" in
+		aarch64) echo "arm64-v8a" ;;
+		arm)     echo "armeabi-v7a" ;;
+		x86_64)  echo "x86_64" ;;
+		i686|x86) echo "x86" ;;
+		*) echo "arm64-v8a" ;;
+	esac
+}
+
+_android_host() {
+	case "$1" in
+		aarch64) echo "aarch64-linux-android" ;;
+		arm)     echo "arm-linux-androideabi" ;;
+		x86_64)  echo "x86_64-linux-android" ;;
+		i686|x86) echo "i686-linux-android" ;;
+		*) echo "aarch64-linux-android" ;;
+	esac
+}
+
+buildLibogg(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/ogg" || return 1
+	[ -f ./autogen.sh ] && ./autogen.sh >/dev/null 2>&1 || true
+	CFLAGS="$EXTRA_CFLAGS -I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
+	CC="${CROSS_PREFIX}clang" CXX="${CROSS_PREFIX}clang++" AR="$LLVM_AR" RANLIB="$LLVM_RANLIB" \
+	./configure --host="$(_android_host "$TARGET_ARCH")" --prefix="$PREFIX" --enable-static --disable-shared --with-pic || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibvorbis(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/vorbis" || return 1
+	[ -f ./autogen.sh ] && ./autogen.sh >/dev/null 2>&1 || true
+	CFLAGS="$EXTRA_CFLAGS -I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" OGG_CFLAGS="-I$PREFIX/include" OGG_LIBS="-L$PREFIX/lib -logg" \
+	CC="${CROSS_PREFIX}clang" CXX="${CROSS_PREFIX}clang++" AR="$LLVM_AR" RANLIB="$LLVM_RANLIB" \
+	./configure --host="$(_android_host "$TARGET_ARCH")" --prefix="$PREFIX" --enable-static --disable-shared --with-pic || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibwebp(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/libwebp" || return 1
+	rm -rf build; mkdir -p build; cd build
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
+		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
+		-DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF -DWEBP_BUILD_GIF2WEBP=OFF \
+		-DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF \
+		-DWEBP_BUILD_EXTRAS=OFF -DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibsvtav1(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/SVT-AV1" || return 1
+	rm -rf build; mkdir -p build; cd build
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
+		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_APPS=OFF -DBUILD_TESTING=OFF \
+		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" -DCMAKE_CXX_FLAGS="-fPIC $EXTRA_CXXFLAGS" || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibjxl(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/libjxl" || return 1
+	rm -rf build; mkdir -p build; cd build
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
+		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF \
+		-DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
+		-DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_VIEWERS=OFF -DJPEGXL_ENABLE_SJPEG=OFF \
+		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" -DCMAKE_CXX_FLAGS="-fPIC $EXTRA_CXXFLAGS" || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibsoxr(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/soxr" || return 1
+	rm -rf build; mkdir -p build; cd build
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
+		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTS=OFF \
+		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibrubberband(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/rubberband" || return 1
+	rm -rf build; mkdir -p build
+	CROSS_FILE="$SCRIPT_DIR/android-$TARGET_ARCH-$ANDROID_API_LEVEL-cross.meson"
+	[ -f "$CROSS_FILE" ] || CROSS_FILE="$(ls "$SCRIPT_DIR"/android-*-$ANDROID_API_LEVEL-cross.meson 2>/dev/null | head -1)"
+	meson setup build --default-library=static --prefix="$PREFIX" --buildtype release -Dtests=disabled -Ddocs=disabled ${CROSS_FILE:+--cross-file="$CROSS_FILE"} || return 1
+	ninja -C build || return 1
+	ninja -C build install || return 1
+}
+
+buildLibvidstab(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/vid.stab" || return 1
+	rm -rf build; mkdir -p build; cd build
+	cmake .. -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_PATH/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="$(_android_cmake_abi "$TARGET_ARCH")" -DANDROID_PLATFORM="android-$ANDROID_API_LEVEL" \
+		-DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
+		-DCMAKE_C_FLAGS="-fPIC $EXTRA_CFLAGS" || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
+buildLibxvid(){
+	TARGET_ARCH=$1; TARGET_CPU=$2; PREFIX=$3; CROSS_PREFIX=$4; EXTRA_CFLAGS=$5; EXTRA_CXXFLAGS=$6; EXTRA_CONFIG=$7
+	cd "${SRC_DIR}/xvidcore/build/generic" 2>/dev/null || cd "${SRC_DIR}/xvidcore" || return 1
+	CFLAGS="$EXTRA_CFLAGS -I$PREFIX/include" LDFLAGS="-L$PREFIX/lib" \
+	CC="${CROSS_PREFIX}clang" CXX="${CROSS_PREFIX}clang++" AR="$LLVM_AR" RANLIB="$LLVM_RANLIB" \
+	./configure --host="$(_android_host "$TARGET_ARCH")" --prefix="$PREFIX" --disable-assembly || return 1
+	make -j"$JOBS" || return 1
+	make install || return 1
+}
+
 # Conditional wrappers - only build if ENABLED_CONFIG requests it
 
 maybeBuildLibx264(){
@@ -1934,6 +2095,13 @@ maybeBuildExternal(){
 		# Force flag to pass the check
 		flag="enable-libass"
 	fi
+	if [ "$lib" = "ogg" ]; then
+		if ! echo "$ENABLED_CONFIG" | grep -q "enable-libvorbis"; then
+			echo -e "\e[1;33mSkipping libogg build (libvorbis not enabled)\e[0m"
+			return 0
+		fi
+		flag="enable-libvorbis"
+	fi
 	if echo "$ENABLED_CONFIG" | grep -q "$flag"; then
 		case "$lib" in
 			x265)    buildLibx265 "$@" ;;
@@ -1946,6 +2114,15 @@ maybeBuildExternal(){
 			harfbuzz) buildHarfbuzz "$@" ;;
 			ass)     buildLibass "$@" ;;
 			fdk-aac) buildLibfdkaac "$@" ;;
+			ogg)     buildLibogg "$@" ;;
+			vorbis)  buildLibvorbis "$@" ;;
+			webp)    buildLibwebp "$@" ;;
+			svtav1)  buildLibsvtav1 "$@" ;;
+			jxl)     buildLibjxl "$@" ;;
+			soxr)    buildLibsoxr "$@" ;;
+			rubberband) buildLibrubberband "$@" ;;
+			vidstab) buildLibvidstab "$@" ;;
+			xvid)    buildLibxvid "$@" ;;
 			*) echo -e "\e[1;33mNo build recipe for $lib (flag $flag) - skipping\e[0m"; return 0 ;;
 		esac
 		local rc=$?
@@ -1957,6 +2134,14 @@ maybeBuildExternal(){
 				rm -rf "$3/lib/libass.a" "$3/lib/pkgconfig/libass.pc" "$3/lib/libfreetype.a" "$3/lib/pkgconfig/freetype2.pc" "$3/lib/libharfbuzz.a" "$3/lib/pkgconfig/harfbuzz.pc" "$3/lib/libfribidi.a" "$3/lib/pkgconfig/fribidi.pc" 2>/dev/null || true
 				return 0
 			fi
+			case "$lib" in
+				ogg|vorbis|webp|svtav1|jxl|soxr|rubberband|vidstab|xvid)
+					echo -e "\e[1;33mWarning: lib${lib} build failed, disabling --enable-lib${lib} and continuing\e[0m"
+					ENABLED_CONFIG=$(echo "$ENABLED_CONFIG" | sed "s/--enable-lib${lib}//g")
+					[ "$lib" = "ogg" ] && ENABLED_CONFIG=$(echo "$ENABLED_CONFIG" | sed "s/--enable-libvorbis//g")
+					return 0
+					;;
+			esac
 			return $rc
 		fi
 	else
@@ -2136,7 +2321,7 @@ create_umbrella_library(){
 		done
 	fi
 	# Fallback for libs without pc or with bare .a (e.g. x264 if pc missing)
-	for lib in dav1d x264 x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac; do
+	for lib in dav1d x264 x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac ogg vorbis webp svtav1 jxl soxr rubberband vidstab xvid; do
 		a_path="${PREFIX}/lib/lib${lib}.a"
 		# mp3lame is libmp3lame.a
 		if [ "$lib" = "mp3lame" ]; then a_path="${PREFIX}/lib/libmp3lame.a"; fi
@@ -2506,7 +2691,7 @@ build_single_arch(){
 		echo -e "\e[1;31mError compiling dav1d for $ARCH. Aborting.\e[0m"
   		return 1
 	fi
-	for ext in x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac; do
+	for ext in x265 vpx opus mp3lame aom freetype fribidi harfbuzz ass fdk-aac ogg vorbis webp svtav1 jxl soxr rubberband vidstab xvid; do
 		maybeBuildExternal "$ext" "$TARGET_ARCH" "$TARGET_CPU" "$PREFIX" "$CROSS_PREFIX" "$EXTRA_CFLAGS" "$EXTRA_CXXFLAGS" "$EXTRA_CONFIG"
 		if [ $? -ne 0 ]; then
 			echo -e "\e[1;31mError compiling $ext for $ARCH. Aborting.\e[0m"
