@@ -162,19 +162,12 @@ else
 fi
 
 AV_VERSION=""
-for f in "${FFVERSION_H_CANDIDATES[@]}"; do
-	AV_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$f" 2>/dev/null | cut -d'"' -f2 || true)
+# Search every generated ffversion.h under the builder tree (any layout).
+while IFS= read -r _ffv; do
+	[ -n "$_ffv" ] || continue
+	AV_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$_ffv" 2>/dev/null | cut -d'"' -f2 || true)
 	[ -n "$AV_VERSION" ] && break
-done
-# Fallback: try ffversion.h for any available ABI (when PRIMARY_ABI not built)
-if [ -z "$AV_VERSION" ]; then
-	for abi in $AVAILABLE_ABIS; do
-		for cand in "$SCRIPT_DIR/ffmpeg-build/$API_LEVEL/$abi/include/libavutil/ffversion.h" "$SCRIPT_DIR/ffmpeg-build/$abi/include/libavutil/ffversion.h"; do
-			AV_VERSION=$(grep -m1 '#define FFMPEG_VERSION' "$cand" 2>/dev/null | cut -d'"' -f2 || true)
-			[ -n "$AV_VERSION" ] && break 2
-		done
-	done
-fi
+done < <(find "$SCRIPT_DIR" -type f -name "ffversion.h" 2>/dev/null)
 if [ -z "$AV_VERSION" ]; then
 	# Try strings from staged libs, prefer PRIMARY_ABI then any available
 	for try_abi in "$PRIMARY_ABI" $AVAILABLE_ABIS; do
@@ -184,6 +177,12 @@ if [ -z "$AV_VERSION" ]; then
 	done
 fi
 [ -n "$AV_VERSION" ] || AV_VERSION="unknown"
+# Prefer a provided release tag over a bare commit hash produced by shallow checkouts.
+if [ "$AV_VERSION" = "unknown" ] || echo "$AV_VERSION" | grep -qE '^[0-9a-f]{7,}$'; then
+	if [ -n "${FFMPEG_TAG:-}" ]; then
+		AV_VERSION="$FFMPEG_TAG"
+	fi
+fi
 
 FFMPEG_CONF=""
 FFMPEG_CONFIG_MAK=""
@@ -277,6 +276,8 @@ cat >> "$STAGE_DIR/manifest.json" <<EOF
         }
 EOF
 
+# Pretty-print the manifest for stable, readable output.
+python3 -m json.tool "$STAGE_DIR/manifest.json" > "$STAGE_DIR/manifest.pretty.json" && mv "$STAGE_DIR/manifest.pretty.json" "$STAGE_DIR/manifest.json"
 python3 -m json.tool "$STAGE_DIR/manifest.json" >/dev/null && log "manifest.json valid"
 
 # ---------------------------------------------------------------------------
