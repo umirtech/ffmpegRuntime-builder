@@ -85,7 +85,8 @@ SRC_DIR="${SRC_DIR:-$SCRIPT_DIR/build-src}"
 FFMPEG_SOURCE_DIR="${FFMPEG_SOURCE_DIR:-$SRC_DIR/ffmpeg}"
 FFMPEG_BUILD_DIR="${FFMPEG_BUILD_DIR:-$SCRIPT_DIR/ffmpeg-build}"
 
-FFMPEG_URL="https://git.ffmpeg.org/ffmpeg.git"
+FFMPEG_URL="https://github.com/FFmpeg/FFmpeg.git"
+FFMPEG_URL_FALLBACK="https://git.ffmpeg.org/ffmpeg.git"
 DAV1D_URL="https://code.videolan.org/videolan/dav1d.git"
 X264_URL="https://code.videolan.org/videolan/x264.git"
 X265_URL="https://bitbucket.org/multicoreware/x265_git.git"
@@ -681,9 +682,14 @@ clean_and_fetch_sources(){
 	echo -e "\e[1;32mFetching a clean FFmpeg source tree...\e[0m"
 
 	if [ -z "${FFMPEG_TAG:-}" ]; then
-	FFMPEG_TAG=$(git ls-remote --tags "$FFMPEG_URL" 2>/dev/null | sed 's|.*/||' | grep -E '^n[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -1)
-fi
-: "${FFMPEG_TAG:=n9.0.2}"
+		for _ff_url in "$FFMPEG_URL" "$FFMPEG_URL_FALLBACK"; do
+			FFMPEG_TAG=$(latest_release_tag "$_ff_url")
+			[ -n "$FFMPEG_TAG" ] && break
+		done
+	fi
+	: "${FFMPEG_TAG:=n9.0.2}"
+	export GIT_HTTP_LOW_SPEED_LIMIT="${GIT_HTTP_LOW_SPEED_LIMIT:-1}"
+	export GIT_HTTP_LOW_SPEED_TIME="${GIT_HTTP_LOW_SPEED_TIME:-30}"
 	if [ -d "$FFMPEG_SOURCE_DIR" ] && [ ! -d "$FFMPEG_SOURCE_DIR/.git" ]; then
 		echo "Existing $FFMPEG_SOURCE_DIR is not a git checkout - removing for clean fetch"
 		rm -rf "$FFMPEG_SOURCE_DIR"
@@ -691,12 +697,25 @@ fi
 	if [ -d "$FFMPEG_SOURCE_DIR/.git" ]; then
 		git -C "$FFMPEG_SOURCE_DIR" reset --hard
 		git -C "$FFMPEG_SOURCE_DIR" clean -fdx
-		git -C "$FFMPEG_SOURCE_DIR" fetch --depth 1 origin tag "$FFMPEG_TAG"
-		git -C "$FFMPEG_SOURCE_DIR" checkout "$FFMPEG_TAG"
-		git -C "$FFMPEG_SOURCE_DIR" clean -fdx
-	else
-		git clone --depth 1 --branch "$FFMPEG_TAG" "$FFMPEG_URL" "$FFMPEG_SOURCE_DIR" || return 1
 	fi
+	_ff_ok=0
+	for _ff_url in "$FFMPEG_URL" "$FFMPEG_URL_FALLBACK"; do
+		if [ -d "$FFMPEG_SOURCE_DIR/.git" ]; then
+			git -C "$FFMPEG_SOURCE_DIR" remote set-url origin "$_ff_url"
+			git -C "$FFMPEG_SOURCE_DIR" fetch --depth 1 origin tag "$FFMPEG_TAG" && \
+				git -C "$FFMPEG_SOURCE_DIR" checkout "$FFMPEG_TAG" && _ff_ok=1
+		else
+			git clone --depth 1 --branch "$FFMPEG_TAG" "$_ff_url" "$FFMPEG_SOURCE_DIR" && _ff_ok=1
+		fi
+		[ "$_ff_ok" = "1" ] && break
+		echo -e "\e[1;33mFFmpeg source unavailable at $_ff_url, trying fallback...\e[0m"
+		rm -rf "$FFMPEG_SOURCE_DIR"
+	done
+	if [ "$_ff_ok" != "1" ]; then
+		echo -e "\e[1;31mError: could not fetch FFmpeg from GitHub or git.ffmpeg.org\e[0m"
+		return 1
+	fi
+	git -C "$FFMPEG_SOURCE_DIR" clean -fdx
 
 	# Conditional external deps: only fetch what ENABLED_CONFIG actually needs.
 	# Generic mapping: enable-lib* -> directory + URL
