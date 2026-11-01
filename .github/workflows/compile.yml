@@ -2,6 +2,16 @@ name: Build FFShell FFmpeg runtime for Android
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Select Build Type"
+        required: true
+        default: "Minimal"
+        type: choice
+        options:
+          - Minimal
+          - GPL
+          - Full
   workflow_call:
     inputs:
       build_type:
@@ -61,9 +71,11 @@ jobs:
         BUILD_ARGS=""
 
         if [ "${{ inputs.build_type }}" = "Full" ]; then
-        BUILD_ARGS="--full"
+          BUILD_ARGS="--full"
+        elif [ "${{ inputs.build_type }}" = "GPL" ]; then
+          BUILD_ARGS="--gpl"
         fi
-        
+
         set -e
         chmod +x android.sh
         ./android.sh --arch "${FFSHELL_ARCH_OVERRIDE}" ${BUILD_ARGS}

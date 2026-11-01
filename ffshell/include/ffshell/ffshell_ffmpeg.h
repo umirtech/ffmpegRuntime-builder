@@ -45,9 +45,9 @@ typedef enum {
     FFSHELL_ERR_INTERNAL          /* ffmpeg exited with a non-zero code    */
 } ffshell_status;
 
-/* Raw terminal callback — delivers byte-identical stdout+stderr bytes
+/* Raw terminal callback delivers byte-identical stdout+stderr bytes
  * as they would appear on a real TTY (including \r, \n, ANSI CSI/SGR,
- * UTF-8). Level is informational (currently always AV_LOG_INFO) — the
+ * UTF-8). Level is informational (currently always AV_LOG_INFO) the
  * 1:1 guarantee is on bytes, not levels. `data` is NOT NUL-terminated;
  * `len` is its exact length. May be called from an internal reader
  * thread; must be reentrant/thread-safe and must not call back into run().
@@ -100,7 +100,7 @@ void ffshell_set_path_callback(
 /*
  * Run the embedded FFmpeg CLI frontend with the given command string.
  *
- * The full command is parsed with shell-like tokenization — single-quote,
+ * The full command is parsed with shell-like tokenization single-quote,
  * double-quote and backslash escaping are honoured, whitespace outside
  * quotes delimits arguments. POSIX `<backslash><newline>` line-continuation
  * (and `<backslash><CRLF>`) is removed before tokenization, so multiline
@@ -166,7 +166,7 @@ const char *ffshell_get_version(void);
  * `-stats`/`-nostats`/`-stats_period` in the command string (e.g.
  * `"-hide_banner -loglevel warning -i in.mp4 out.mp4"`). Progress (periodic
  * `frame=… fps=… speed=…`) is delivered via the standard stats lines in
- * this callback — just like the official binary — and can be parsed from
+ * this callback just like the official binary and can be parsed from
  * the log or handled via TerminalParser. No separate progress callback.
  */
 void ffshell_set_log_callback(

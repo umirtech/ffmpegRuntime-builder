@@ -127,7 +127,7 @@ else
     if [[ -f "$TEMP_DIR/build/package/manifest.json" ]]; then
       cp -v "$TEMP_DIR/build/package/manifest.json" "$ORIGINAL_BUILD_PACKAGE_DIR"/
     fi
-    # Also copy zip that package.sh places at /tmp/ffshell-ffmpeg-*.zip (if present) — optional
+    # Also copy zip that package.sh places at /tmp/ffshell-ffmpeg-*.zip (if present) optional
     for f in /tmp/ffmpeg-runtime-*.zip; do
       [[ -f "$f" ]] && echo "[build.sh] temp package also at $f" || true
     done

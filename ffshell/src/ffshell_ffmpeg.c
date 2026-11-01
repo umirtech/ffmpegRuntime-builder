@@ -29,7 +29,7 @@
 #define FFSHELL_LOG_LINE 8192
 
 /* ------------------------------------------------------------------ */
-/* Command string parsing — FFmpeg cmdutils tokenization                */
+/* Command string parsing FFmpeg cmdutils tokenization                */
 /* Uses av_get_token semantics: single-quote + backslash escaping,     */
 /* whitespace outside quotes delimits arguments. Double quotes are     */
 /* additionally supported for shell compatibility. Whitespace chars    */
@@ -41,7 +41,7 @@
 
 /*
  * POSIX shell line-continuation: `<backslash><newline>` (and `<backslash><CR>`,
- * `<backslash><CRLF>` for pasted/Windows text) is removed BEFORE tokenization —
+ * `<backslash><CRLF>` for pasted/Windows text) is removed BEFORE tokenization  
  * the same job a real shell does for you before execve(). Without this step the
  * tokenizer below would copy the literal LF into a token (creating a stray
  * "\n" argv entry) and multiline commands would fail. We strip globally (matching
@@ -597,10 +597,10 @@ static int argv_has_info_flag(int argc, char **argv)
 }
 
 /* ------------------------------------------------------------------ */
-/* Log forwarding — raw 1:1 terminal bytes (merged stdout+stderr)      */
+/* Log forwarding raw 1:1 terminal bytes (merged stdout+stderr)      */
 /* No av_log hook, no source patches. The log callback receives raw    */
 /* chunks preserving \r, \n, ANSI CSI/SGR and UTF-8 split across       */
-/* reads — feed directly to TerminalParser::write(data,len).           */
+/* reads feed directly to TerminalParser::write(data,len).           */
 /* User controls verbosity exactly like official ffmpeg via -loglevel,  */
 /* -hide_banner, -stats/-nostats in the command string. Progress is    */
 /* delivered via the standard ffmpeg stats lines in the log (no        */
@@ -648,7 +648,7 @@ static void ffshell_forward_raw(int level, const char *data, size_t len)
 }
 
 /* ------------------------------------------------------------------ */
-/* Raw terminal capture — merged stdout+stderr, 1:1 byte identity       */
+/* Raw terminal capture merged stdout+stderr, 1:1 byte identity       */
 /* Uses AF_UNIX socketpair so shutdown(SHUT_RD) can force EOF even if  */
 /* a stray dup of the write end survives.                              */
 /* ------------------------------------------------------------------ */
@@ -683,7 +683,7 @@ static int setup_raw_terminal_capture(pthread_t *thr)
     term_saved_stderr = dup(STDERR_FILENO);
     if (term_saved_stderr < 0) { close(sv[0]); close(sv[1]); close(term_saved_stdout); term_saved_stdout=-1; return -1; }
 
-    /* Keep real TTY semantics: do NOT force AV_LOG_FORCE_COLOR — let
+    /* Keep real TTY semantics: do NOT force AV_LOG_FORCE_COLOR let
      * libavutil/log.c:check_color_terminal (isatty+TERM) decide, exactly
      * as real linux `ffmpeg` does. Caller may set AV_LOG_FORCE_COLOR=1
      * explicitly to force ANSI for TerminalParser. */
@@ -713,12 +713,12 @@ static int setup_raw_terminal_capture(pthread_t *thr)
 static void teardown_raw_terminal_capture(pthread_t thr)
 {
     if (term_saved_stdout < 0 && term_saved_stderr < 0) return;
-    /* Flush stdio before restoring real fds — otherwise buffered bytes are lost */
+    /* Flush stdio before restoring real fds otherwise buffered bytes are lost */
     fflush(stdout);
     fflush(stderr);
     if (term_saved_stdout >= 0) { dup2(term_saved_stdout, STDOUT_FILENO); close(term_saved_stdout); term_saved_stdout=-1; }
     if (term_saved_stderr >= 0) { dup2(term_saved_stderr, STDERR_FILENO); close(term_saved_stderr); term_saved_stderr=-1; }
-    /* Write end refs (1 and 2) are now closed — reader should see EOF.
+    /* Write end refs (1 and 2) are now closed reader should see EOF.
      * Force it even if a stray dup of the socket write end survived (e.g. pipe: protocol). */
     if (term_pipe_read >= 0) {
         shutdown(term_pipe_read, SHUT_RD);

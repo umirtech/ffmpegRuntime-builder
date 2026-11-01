@@ -194,7 +194,7 @@ while IFS= read -r _cfg; do
 	break
 done < <(find "$SCRIPT_DIR" -type f -path "*/ffbuild/config.mak" 2>/dev/null | head -1)
 if [ -n "$FFMPEG_CONFIG_MAK" ]; then
-	FFMPEG_CONF=$(grep '^FFMPEG_CONFIGURATION=' "$FFMPEG_CONFIG_MAK" 2>/dev/null | head -1 | cut -d= -f2- | head -c 2000 || true)
+	FFMPEG_CONF=$(grep '^FFMPEG_CONFIGURATION=' "$FFMPEG_CONFIG_MAK" 2>/dev/null | head -1 | cut -d= -f2- || true)
 fi
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -237,18 +237,21 @@ if [ -n "$BUILD_TYPE_INPUT" ]; then
 else
 	if [ -n "$FFMPEG_CONF" ]; then
 		case "$FFMPEG_CONF" in
-			*--enable-nonfree*|*--enable-gpl*) BUILD_TYPE="full" ;;
+			*--enable-nonfree*) BUILD_TYPE="full" ;;
+			*--enable-gpl*) BUILD_TYPE="gpl" ;;
 			*) BUILD_TYPE="minimal" ;;
 		esac
-	elif [ -n "$BIN_LICENSE" ] && { echo "$BIN_LICENSE" | grep -qiE "GPL (version|v)|non-free"; }; then
+	elif [ -n "$BIN_LICENSE" ] && echo "$BIN_LICENSE" | grep -qiE "non-free"; then
 		BUILD_TYPE="full"
+	elif [ -n "$BIN_LICENSE" ] && echo "$BIN_LICENSE" | grep -qiE "GPL (version|v)"; then
+		BUILD_TYPE="gpl"
 	else
 		BUILD_TYPE="minimal"
 	fi
 fi
 case "$BUILD_TYPE" in
-	full|minimal) ;;
-	*) echo "[package] ERROR: unsupported build type '$BUILD_TYPE' (use full or minimal)" >&2; exit 1 ;;
+	full|gpl|minimal) ;;
+	*) echo "[package] ERROR: unsupported build type '$BUILD_TYPE' (use full, gpl or minimal)" >&2; exit 1 ;;
 esac
 log "BUILD_TYPE=$BUILD_TYPE"
 
